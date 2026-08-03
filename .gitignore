@@ -1,0 +1,18 @@
+# Environment & Virtualenvs
+.venv/
+venv/
+ENV/
+
+# Python Build & Egg Info
+*.egg-info/
+*.egg
+build/
+dist/
+__pycache__/
+*.pyc
+
+# Operating System & IDE
+.DS_Store
+.idea/
+.vscode/
+*.swp
