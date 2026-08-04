@@ -1,0 +1,22 @@
+# Battery Energy Storage System (BESS) Configuration
+# Source: BloombergNEF Battery Price Survey 2024; Danish Energy Agency Technology Data for Energy Storage (2024)
+# Assumes containerized LFP (Lithium Iron Phosphate) system for industrial behind-the-meter use
+
+[bess]
+model_name = "Generic_LFP_Container_4h"
+
+# Economics
+capex_eur_per_kwh = 350.0      # EUR/kWh usable capacity (system-level incl. BOS and installation)
+opex_eur_per_kwh_year = 5.0    # Fixed O&M per year (~1.4% of CAPEX)
+lifetime_years = 15
+
+# Performance
+round_trip_efficiency = 0.90   # Total AC-AC round-trip efficiency
+charge_efficiency = 0.95       # DC charging efficiency (sqrt of RTE)
+discharge_efficiency = 0.95    # DC discharging efficiency (sqrt of RTE)
+self_discharge_rate_per_hour = 0.0001  # 0.01%/h calendar degradation proxy
+initial_soc = 0.5              # Initial state of charge (fraction)
+c_rate = 0.5                   # Max charge/discharge power = C_rate * capacity (0.5C -> 2h full cycle)
+
+# Sizing constraint
+max_capacity_kwh = 50000.0     # 50 MWh maximum (site space and grid connection limit)

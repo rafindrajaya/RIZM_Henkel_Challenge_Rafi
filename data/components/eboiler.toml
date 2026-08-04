@@ -1,0 +1,18 @@
+# Electric Boiler (Power-to-Heat) Configuration
+# Source: Danish Energy Agency Technology Data for Heating Installations (2024), Table 215
+# Electrode boiler for high-temperature steam generation (industrial scale)
+
+[eboiler]
+model_name = "Electrode_Boiler_HT_Steam"
+
+# Economics
+capex_eur_per_kw_th = 100.0    # EUR/kW_th installed (electrode boilers are low CAPEX)
+opex_eur_per_kw_th_year = 2.0  # Fixed O&M per year (~2% of CAPEX)
+lifetime_years = 20
+
+# Performance
+thermal_efficiency = 0.98      # Electricity to steam conversion (near-unity, only radiation losses)
+# Output temperature: 180-200 deg C saturated steam (16 bar) -- matches b_steam_ht bus
+
+# Existing capacity (from StoREN Phase 1 baseline estimate)
+capacity_th_kw = 30000.0       # 30 MW_th

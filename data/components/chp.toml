@@ -1,0 +1,20 @@
+# Combined Heat and Power (CHP) Gas Turbine Configuration
+# Source: StoREN Phase 1 Report (DLR/Henkel/BASF); Danish Energy Agency Technology Data (2024)
+# Represents existing CHP unit at Henkel Holthausen (fixed capacity, not investable)
+
+[chp]
+model_name = "Existing_Gas_CHP_Holthausen"
+
+# Economics (existing asset -- no investment CAPEX; OPEX for maintenance only)
+capex_eur_per_kw_el = 1200.0   # Reference CAPEX for greenfield (not used in operation mode)
+opex_eur_per_kw_el_year = 25.0 # Fixed O&M per year
+lifetime_years = 25
+
+# Performance
+electrical_efficiency = 0.40   # Electrical output / gas input (LHV)
+thermal_efficiency = 0.45      # High-temp steam output / gas input (LHV)
+# Total fuel utilization = 0.85 (0.40 + 0.45)
+
+# Existing capacity (from StoREN Phase 1 baseline estimate)
+capacity_el_kw = 40000.0       # 40 MW_el
+capacity_th_kw = 45000.0       # 45 MW_th (high-temp steam)

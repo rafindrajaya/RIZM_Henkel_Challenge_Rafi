@@ -160,6 +160,23 @@ def prepare_data_files(year: int = 2024) -> Tuple[Path, Path]:
     return market_path, solar_path
 
 
+def verify_solver_availability(solver_name: str = "appsi_highs") -> bool:
+    """Verifies that Pyomo appsi_highs and highspy solver are installed and available."""
+    try:
+        import highspy
+        import pyomo.environ as po
+        opt = po.SolverFactory(solver_name)
+        available = opt.available()
+        if available:
+            ver = f"{highspy.HIGHS_VERSION_MAJOR}.{highspy.HIGHS_VERSION_MINOR}.{highspy.HIGHS_VERSION_PATCH}"
+            print(f"[Info] Solver '{solver_name}' (highspy v{ver}) verified available.")
+        return available
+    except Exception as e:
+        print(f"[Warning] Solver '{solver_name}' check failed: {e}")
+        return False
+
+
 if __name__ == "__main__":
     m_p, s_p = prepare_data_files()
-    print("Data preparation complete.")
+    solver_ok = verify_solver_availability()
+    print(f"Data preparation complete. Solver verified: {solver_ok}")

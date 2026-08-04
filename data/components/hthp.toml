@@ -1,0 +1,25 @@
+# High-Temperature Industrial Heat Pump (HTHP) Configuration
+# Source: IEA Heat Pumping Technologies Annex 58; Danish Energy Agency Technology Data (2024)
+# Large-scale compression heat pump recovering industrial waste heat for process heating
+
+[hthp]
+model_name = "Industrial_HTHP_Compression"
+
+# Economics
+capex_eur_per_kw_th = 600.0    # EUR/kW_th installed (higher than standard HP due to HT components)
+opex_eur_per_kw_th_year = 10.0 # Fixed O&M per year (~1.7% of CAPEX)
+lifetime_years = 20
+
+# Performance
+# COP derivation (from thermodynamics-exergy-specialist.md):
+#   Source temp (waste heat / cooling water): 35 deg C
+#   Supply temp (process heat): 80 deg C
+#   Carnot COP = (80+273) / (80-35) = 7.84
+#   Second-law efficiency eta_ex = 0.36
+#   Practical COP = 7.84 * 0.36 = 2.8
+cop = 2.8
+source_temp_c = 35.0           # Industrial cooling water return
+supply_temp_c = 80.0           # Mid-temperature process heat (b_heat_lt bus)
+
+# Sizing constraint
+max_capacity_kw_th = 40000.0   # 40 MW_th maximum (waste heat source availability limit)

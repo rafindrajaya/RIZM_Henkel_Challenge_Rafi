@@ -146,7 +146,7 @@ Total annual cost = 280 * 450,000 = 126,000,000 Euro / year electricity cost
 
 ### TODO list:
 1. Clean up rafindrajaya repo
-2. Push this local repo to public repo in rafindrajaya account
+2. Push this local repo to public repo in rafindrajaya account (Done)
 3. Learn the best practice how to make an MVP using agentic AI that is sustainable and effective
    - I want to be able to still fully understand the code structure
    - I want the most important architecture to be implemented and translated correctly
