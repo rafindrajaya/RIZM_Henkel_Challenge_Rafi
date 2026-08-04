@@ -142,3 +142,16 @@ Total annual cost = 280 * 450,000 = 126,000,000 Euro / year electricity cost
    - MILP optimization engineer: refer to online references or public repository to acquire skills of best practice in modelling in oemof.solph, pyomo, etc
    - Thermodynamics exergy specialist: refer to online references or public repository to acquire skills of best practice in modelling in linear energy system to accurately model the thermodynamics efficinetly
    - Fix the solution architect career coach to refer to online references or public repository of how to address a problem or challenge with a first principle mindset that exactly identifies the main challenge or problem, and provide solution that hits all the crucial points
+14. Add a aerial photo of Henkel on the README.md
+
+### TODO list:
+1. Clean up rafindrajaya repo
+2. Push this local repo to public repo in rafindrajaya account
+3. Learn the best practice how to make an MVP using agentic AI that is sustainable and effective
+   - I want to be able to still fully understand the code structure
+   - I want the most important architecture to be implemented and translated correctly
+   - I want the most important functionality to be addressed correctly
+4. Do the notes changes in this order below:
+- Skills update
+- Optimization model opdate
+- Jupiter notebook update
