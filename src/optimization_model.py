@@ -111,13 +111,13 @@ class HenkelEnergySystem:
         if df_market is not None:
             self.df_market = df_market.copy()
         else:
-            m_path = Path(market_path) if market_path else base_data_dir / "market_data_2024.csv"
+            m_path = Path(market_path) if market_path else base_data_dir / "market_data_2025.csv"
             self.df_market = pd.read_csv(m_path, index_col=0, parse_dates=True)
 
         if df_solar is not None:
             self.df_solar = df_solar.copy()
         else:
-            s_path = Path(solar_path) if solar_path else base_data_dir / "solar_data_duesseldorf_2024.csv"
+            s_path = Path(solar_path) if solar_path else base_data_dir / "solar_data_duesseldorf_2025.csv"
             self.df_solar = pd.read_csv(s_path, index_col=0, parse_dates=True)
 
         self.mode = mode

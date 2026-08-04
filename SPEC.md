@@ -96,7 +96,7 @@ RIZM_challenge_Rafi/
 
 ## 4. Data Schemas
 
-### 4.1 Market Data CSV (`data/market_data_2024.csv`)
+### 4.1 Market Data CSV (`data/market_data_2025.csv`)
 
 | Column | Unit | Description |
 |--------|------|-------------|
@@ -110,7 +110,7 @@ RIZM_challenge_Rafi/
 | `elec_total_standard_eur_mwh` | EUR/MWh | elec_spot + grid_fee_standard |
 | `elec_total_sec19_eur_mwh` | EUR/MWh | elec_spot + grid_fee_sec19 |
 
-### 4.2 Solar Data CSV (`data/solar_data_duesseldorf_2024.csv`)
+### 4.2 Solar Data CSV (`data/solar_data_duesseldorf_2025.csv`)
 
 | Column | Unit | Description |
 |--------|------|-------------|
