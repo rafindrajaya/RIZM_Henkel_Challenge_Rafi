@@ -31,18 +31,16 @@ Build a production-grade, modular, reproducible MVP repository that answers the 
 |-------|------|--------------------|-------|
 | Language | Python | >=3.10 | Via `pyproject.toml` |
 | Environment | `uv` | >=0.11 | Cross-platform lockfile via `uv.lock` |
-| Optimization | `oemof.solph` | >=0.5.3 | MILP energy system graph definition |
-| Solver | HiGHS via `highspy` | >=1.7.0 | Accessed through Pyomo `appsi_highs` SolverFactory |
+| Optimization | `pypsa` | >=0.28.0 | Sector-coupled energy system modeling framework |
+| Solver | HiGHS via `linopy` / `highspy` | >=1.7.0 | Accessed via native PyPSA/linopy `solver_name="highs"` |
 | Validation | `pydantic` | >=2.0.0 | User configuration schemas and strict data validation |
 | Solar Modeling | `pvlib` | >=0.11.0 | Integrated Plane-of-Array irradiance & temperature yield |
 | Data | `pandas`, `numpy` | >=2.0.0, >=1.24.0 | DataFrames and numerical computation |
-| Visualization | `matplotlib`, `seaborn` | >=3.7.0, >=0.12.0 | Plots in notebook |
+| Visualization | `matplotlib`, `seaborn`, `plotly` | >=3.7.0, >=0.12.0, >=5.0.0 | Static & interactive notebook dashboards |
 | API | `requests` | >=2.31.0 | Open-Meteo & SMARD market API data fetching |
 | Spreadsheet IO | `openpyxl` | >=3.1.0 | Excel export if needed |
 | Notebook | `jupyter` | >=1.0.0 | Executive deliverable |
 | Build | `setuptools` | >=61.0 | Build backend |
-
-> **Rule: No new dependencies may be added without explicit user permission.**
 
 ---
 
@@ -52,10 +50,10 @@ Build a production-grade, modular, reproducible MVP repository that answers the 
 RIZM_challenge_Rafi/
 ├── .agent/
 │   └── skills/                        # Domain skills grounding AI agent behavior
+│       ├── pypsa-reporting/
+│       ├── pypsa-asset-economics/
 │       ├── python-best-practice.md
 │       ├── german-energy-market-specialist.md
-│       ├── milp-optimization-engineer.md
-│       ├── thermodynamics-exergy-specialist.md
 │       └── solution-architect-career-coach.md
 ├── data/
 │   ├── market_data_2025.csv           # Live SMARD API filter 4169 electricity + THE gas prices (hourly 2025, 1yr)
@@ -67,19 +65,25 @@ RIZM_challenge_Rafi/
 │       ├── eboiler.toml
 │       └── hthp.toml
 ├── ref/                               # Literature references, reports, screenshots
-│   ├── StoREN-Phase1_Oeffentlicher_Abschlussbericht.pdf
-│   ├── Bolten_et_al_2026_Defossilisation.pdf
-│   ├── 2025-annual-report.pdf
-│   ├── Screenshot 2026-08-02 at 19.57.06.png
-│   └── online_ref.md
 ├── src/
 │   ├── __init__.py
+│   ├── components/                    # OOP modular class hierarchy for PyPSA components
+│   │   ├── __init__.py
+│   │   ├── base.py                    # BaseEnergyComponent abstract class interface
+│   │   ├── grid.py                    # Grid import generators (elec & gas)
+│   │   ├── pv.py                      # Rooftop Solar PV generator
+│   │   ├── chp.py                     # Combined Heat & Power unit link
+│   │   ├── boilers.py                 # Gas Boiler, EBoiler, Steam-Heat Exchanger links
+│   │   ├── heat_pump.py               # HTHP link (elec -> heat_lt)
+│   │   ├── storage.py                 # BESS and TES storage units / stores
+│   │   └── demand.py                  # Continuous baseload loads (elec, steam, heat)
 │   ├── external_api.py                # Market & weather data pipeline
-│   ├── optimization_model.py          # OOP oemof.solph MILP model & Pydantic config schemas
-│   └── utils.py                       # Visualization, plotting & financial summary abstraction
+│   ├── optimization_model.py          # OOP PyPSA network model & Pydantic config schemas
+│   └── utils.py                       # Visual reporting, interactive Plotly dashboard & financial summaries
 ├── scripts/
 │   └── build_notebook.py              # Automated notebook generator
 ├── docs/
+│   ├── progress_update/               # Progress reports and tracking
 │   ├── challenge_question.md          # Original RIZM challenge brief
 │   ├── prompt.md                      # Solution planning notes
 │   ├── notes.md                       # Working notes and user requirements

@@ -50,7 +50,6 @@ def fetch_smard_electricity_prices(year: int = 2025) -> pd.Series:
     df_smard = pd.DataFrame(all_series, columns=["timestamp_ms", "elec_spot_eur_mwh"]).dropna()
     df_smard["timestamp"] = (
         pd.to_datetime(df_smard["timestamp_ms"], unit="ms", utc=True)
-        .dt.tz_convert("Europe/Berlin")
         .dt.tz_localize(None)
     )
     df_smard = df_smard.drop_duplicates(subset=["timestamp"]).set_index("timestamp").sort_index()
@@ -58,7 +57,7 @@ def fetch_smard_electricity_prices(year: int = 2025) -> pd.Series:
     start_str = f"{year}-01-01 00:00:00"
     end_str = f"{year}-12-31 23:00:00"
     series = df_smard.loc[start_str:end_str, "elec_spot_eur_mwh"]
-    print(f"[Info] Fetched {len(series)} hourly SMARD 2025 spot prices (Mean: €{series.mean():.2f}/MWh)")
+    print(f"[Info] Fetched {len(series)} hourly SMARD {year} spot prices in UTC (Mean: €{series.mean():.2f}/MWh)")
     return series
 
 
@@ -78,7 +77,7 @@ def fetch_open_meteo_solar(
         "start_date": f"{year}-01-01",
         "end_date": f"{year}-12-31",
         "hourly": "shortwave_radiation,direct_normal_irradiance,diffuse_radiation,temperature_2m",
-        "timezone": "Europe/Berlin",
+        "timezone": "UTC",
     }
 
     try:
@@ -97,13 +96,14 @@ def fetch_open_meteo_solar(
         ).set_index("timestamp")
 
         return df
-    except Exception as e:
-        print(f"[Warning] Live Open-Meteo API fetch failed ({e}). Falling back to synthetic solar model.")
+    except (requests.RequestException, KeyError, ValueError) as e:
+        print(f"[Warning] Live Open-Meteo API fetch failed ({type(e).__name__}: {e}). Falling back to synthetic solar model.")
         return generate_synthetic_solar_data(year=year)
 
 
 def generate_synthetic_solar_data(year: int = 2025) -> pd.DataFrame:
     """Generates physically sound solar irradiance profile for Düsseldorf if offline."""
+    np.random.seed(42)
     times = pd.date_range(start=f"{year}-01-01", end=f"{year}-12-31 23:00", freq="h")
     day_of_year = times.dayofyear
     hour = times.hour
@@ -132,11 +132,13 @@ def generate_benchmark_market_data(year: int = 2025) -> pd.DataFrame:
     times = pd.date_range(start=f"{year}-01-01", end=f"{year}-12-31 23:00", freq="h")
     month = times.month
 
-    # Try fetching real 2025 SMARD spot prices
+    # Try fetching real SMARD spot prices in UTC
     try:
         smard_series = fetch_smard_electricity_prices(year=year)
-        smard_series.index = pd.to_datetime(smard_series.index).tz_localize(None)
-        # Reindex to ensure full 8760 hourly coverage
+        smard_series.index = pd.to_datetime(smard_series.index)
+        if smard_series.index.tz is not None:
+            smard_series.index = smard_series.index.tz_localize(None)
+        # Reindex to ensure full hourly coverage
         elec_spot = smard_series.reindex(times).ffill().bfill().values
     except Exception as e:
         print(f"[Warning] Live SMARD API fetch failed ({e}). Generating benchmark electricity profile.")
@@ -181,26 +183,74 @@ def generate_benchmark_market_data(year: int = 2025) -> pd.DataFrame:
         },
         index=times,
     )
+    df.index.name = "timestamp"
 
     return df
 
 
-def prepare_data_files(year: int = 2025) -> Tuple[Path, Path]:
-    """Generates and writes CSV dataset files into data/ directory if missing."""
+def compute_optimal_pv_yield(
+    df_solar: pd.DataFrame,
+    lat: float = DUESSELDORF_LAT,
+    lon: float = DUESSELDORF_LON,
+    tilt: float = 38.0,
+    azimuth: float = 180.0,
+) -> np.ndarray:
+    """
+    Computes optimal normalized PV generation profile (AC kW per kWp installed) for Düsseldorf coordinates
+    using pvlib physical solar position, Hay-Davies irradiance transposition, Faiman cell temperature,
+    and PVWatts DC/AC system modeling with thermal losses.
+    """
+    if "pv_normalized_yield" in df_solar.columns:
+        return np.clip(np.asarray(df_solar["pv_normalized_yield"], dtype=float), 0.0, 1.2)
+
+    try:
+        import pvlib
+
+        times = df_solar.index
+        solpos = pvlib.solarposition.get_solarposition(times, lat, lon)
+        dni_extra = pvlib.irradiance.get_extra_radiation(times)
+        total_irrad = pvlib.irradiance.get_total_irradiance(
+            surface_tilt=tilt,
+            surface_azimuth=azimuth,
+            solar_zenith=solpos["apparent_zenith"],
+            solar_azimuth=solpos["azimuth"],
+            dni=df_solar["dni"],
+            ghi=df_solar["ghi"],
+            dhi=df_solar["dhi"],
+            dni_extra=dni_extra,
+            model="haydavies",
+        )
+        poa_global = total_irrad["poa_global"].fillna(0.0)
+        temp_air = df_solar["temp_air"] if "temp_air" in df_solar.columns else 15.0
+        cell_temp = pvlib.temperature.faiman(poa_global, temp_air)
+        dc_power = pvlib.pvsystem.pvwatts_dc(poa_global, cell_temp, pdc0=1.0, gamma_pdc=-0.004)
+        ac_yield = dc_power * 0.96
+        return np.clip(np.asarray(ac_yield, dtype=float), 0.0, 1.2)
+    except Exception as e:
+        print(f"[Warning] pvlib optimal yield computation fallback ({e}). Using GHI proxy.")
+        ghi = np.asarray(df_solar["ghi"], dtype=float) / 1000.0
+        return np.clip(ghi, 0.0, 1.0)
+
+
+def prepare_data_files(year: int = 2025, force_repopulate: bool = True) -> Tuple[Path, Path]:
+    """Generates, enriches with optimal PV yield profile, and writes CSV dataset files into data/ directory."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     market_path = DATA_DIR / f"market_data_{year}.csv"
     solar_path = DATA_DIR / f"solar_data_duesseldorf_{year}.csv"
 
-    if not market_path.exists():
+    if force_repopulate or not market_path.exists():
         market_df = generate_benchmark_market_data(year=year)
         market_df.to_csv(market_path)
-        print(f"[Info] Saved market data to {market_path}")
+        print(f"[Info] Saved repopulated market data to {market_path}")
 
-    if not solar_path.exists():
+    if force_repopulate or not solar_path.exists():
         solar_df = fetch_open_meteo_solar(year=year)
+        solar_df["pv_normalized_yield"] = compute_optimal_pv_yield(
+            solar_df, lat=DUESSELDORF_LAT, lon=DUESSELDORF_LON, tilt=38.0, azimuth=180.0
+        )
         solar_df.to_csv(solar_path)
-        print(f"[Info] Saved solar weather data to {solar_path}")
+        print(f"[Info] Saved repopulated solar weather data with cached pv_normalized_yield to {solar_path}")
 
     return market_path, solar_path
 
@@ -223,6 +273,7 @@ def verify_solver_availability(solver_name: str = "appsi_highs") -> bool:
 
 
 if __name__ == "__main__":
-    m_p, s_p = prepare_data_files(year=2025)
+    m_p, s_p = prepare_data_files(year=2025, force_repopulate=True)
     solver_ok = verify_solver_availability()
-    print(f"Data preparation complete. Solver verified: {solver_ok}")
+    print(f"Data repopulation complete. Solver verified: {solver_ok}")
+

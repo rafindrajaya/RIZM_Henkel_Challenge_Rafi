@@ -1,404 +1,246 @@
 """
-Visualization, plotting abstractions, and financial reporting utilities
-for Henkel Düsseldorf Holthausen Agentic Energy OS.
+Utility module for PyPSA Energy System Visual Reporting and Financial Economics Analysis.
+
+Provides interactive Plotly dashboards (for Jupyter Notebooks) alongside matplotlib figure exports based on:
+- .agent/skills/pypsa-reporting (diagnostic panels, multi-carrier dispatch stacks, price duration curves)
+- .agent/skills/pypsa-asset-economics (diverging net margins, LCOE/LCOH calculation, Sec19 grid fee protection)
 """
 
-from typing import Dict, Any, Optional
-import numpy as np
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
+import seaborn as sns
+from typing import Dict, Any, Optional
+
+try:
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+    HAS_PLOTLY = True
+except ImportError:
+    HAS_PLOTLY = False
 
 
-def setup_visualization_style() -> None:
-    """Configures clean, executive-level Matplotlib and Seaborn visualization styling."""
-    plt.style.use("seaborn-v0_8-whitegrid" if "seaborn-v0_8-whitegrid" in plt.style.available else "default")
-    plt.rcParams["font.sans-serif"] = ["Inter", "Arial", "DejaVu Sans", "sans-serif"]
-    plt.rcParams["figure.dpi"] = 150
-    plt.rcParams["axes.titlesize"] = 12
-    plt.rcParams["axes.labelsize"] = 10
+# Carrier Color Palette conforming to pypsa-reporting design system
+CARRIER_COLORS = {
+    "grid_electricity": "#3182bd",
+    "solar_pv": "#fec44f",
+    "gas_chp": "#e6550d",
+    "grid_gas": "#6baed6",
+    "gas_boiler": "#fd8d3c",
+    "electric_boiler": "#74c476",
+    "heat_pump": "#2ca02c",
+    "bess_discharger": "#9ecae1",
+    "tes_discharger": "#a1d99b",
+    "demand_elec": "#1f77b4",
+    "demand_steam": "#d62728",
+    "demand_heat": "#2ca02c",
+}
 
 
-def plot_seasonal_dispatch_subplots(
-    df_flows_full: Optional[pd.DataFrame] = None,
-    df_market_full: Optional[pd.DataFrame] = None,
-    **kwargs
-) -> Any:
-    """
-    Renders an interactive, executive-grade dispatch visualization using Plotly (or Matplotlib fallback).
-    Dynamically adapts to any start_time and end_time, allowing inline zoom, pan, hover, and legend toggles.
-    """
-    df_f = df_flows_full if df_flows_full is not None else kwargs.get("df_op_flows_full", kwargs.get("df_flows"))
-    df_m = df_market_full if df_market_full is not None else kwargs.get("df_market", kwargs.get("df_market_full"))
+def plot_dispatch_stacks(results: Dict[str, Any], title: str = "PyPSA Multi-Carrier Dispatch Stack") -> plt.Figure:
+    """Generates a 3-panel matplotlib figure showing dispatch for electricity, HT steam, and LT heat."""
+    n = results["network"]
+    fig, axes = plt.subplots(3, 1, figsize=(14, 10), sharex=True)
 
-    if df_f is None:
-        raise ValueError("No flows DataFrame provided to plot_seasonal_dispatch_subplots()")
+    # 1. Electricity Bus (b_elec)
+    ax0 = axes[0]
+    elec_gen = n.generators_t.p[["grid_electricity", "solar_pv"]] if "solar_pv" in n.generators_t.p.columns else n.generators_t.p[["grid_electricity"]]
+    elec_gen.plot(kind="area", stacked=True, ax=ax0, alpha=0.8, color=[CARRIER_COLORS.get(c, "#333333") for c in elec_gen.columns])
+    ax0.set_title("Electricity Supply Stack (b_elec) [kW]")
+    ax0.set_ylabel("Power [kW]")
+    ax0.grid(True, linestyle="--", alpha=0.5)
 
-    try:
-        import plotly.graph_objects as go
-        from plotly.subplots import make_subplots
+    # 2. HT Steam Bus (b_steam_ht)
+    ax1 = axes[1]
+    steam_cols = []
+    if "gas_boiler" in n.links_t.p1.columns:
+        steam_cols.append("gas_boiler")
+    if "electric_boiler" in n.links_t.p1.columns:
+        steam_cols.append("electric_boiler")
+    if "gas_chp" in n.links_t.p2.columns:
+        steam_df = n.links_t.p2[["gas_chp"]].rename(columns={"gas_chp": "gas_chp_steam"})
+        steam_df.plot(kind="area", stacked=True, ax=ax1, alpha=0.8, color="#e6550d")
+    ax1.set_title("High-Temperature Steam Supply (b_steam_ht) [kW_th]")
+    ax1.set_ylabel("Thermal Power [kW_th]")
+    ax1.grid(True, linestyle="--", alpha=0.5)
 
-        fig = make_subplots(specs=[[{"secondary_y": True}]])
+    # 3. LT Process Heat Bus (b_heat_lt)
+    ax2 = axes[2]
+    heat_cols = []
+    if "heat_pump" in n.links_t.p1.columns:
+        heat_cols.append("heat_pump")
+    if "steam_to_heat_exchanger" in n.links_t.p1.columns:
+        heat_cols.append("steam_to_heat_exchanger")
+    if heat_cols:
+        n.links_t.p1[heat_cols].plot(kind="area", stacked=True, ax=ax2, alpha=0.8)
+    ax2.set_title("Mid-Temperature Process Heat Supply (b_heat_lt) [kW_th]")
+    ax2.set_ylabel("Thermal Power [kW_th]")
+    ax2.set_xlabel("Timestamp")
+    ax2.grid(True, linestyle="--", alpha=0.5)
 
-        # Grid Import (MW)
-        if "grid_electricity -> b_elec" in df_f.columns:
-            grid_mw = df_f["grid_electricity -> b_elec"] / 1000.0
-            fig.add_trace(
-                go.Scatter(x=df_f.index, y=grid_mw, name="Grid Import (MW)", line=dict(color="#2ca02c", width=2)),
-                secondary_y=False,
-            )
-
-        # Gas CHP (MW)
-        if "gas_chp -> b_elec" in df_f.columns:
-            chp_mw = df_f["gas_chp -> b_elec"] / 1000.0
-            fig.add_trace(
-                go.Scatter(x=df_f.index, y=chp_mw, name="Gas CHP (MW)", line=dict(color="#d62728", width=1.5)),
-                secondary_y=False,
-            )
-
-        # E-Boiler (MW)
-        if "b_elec -> electric_boiler" in df_f.columns:
-            eboiler_mw = df_f["b_elec -> electric_boiler"] / 1000.0
-            fig.add_trace(
-                go.Scatter(x=df_f.index, y=eboiler_mw, name="P2H E-Boiler (MW)", line=dict(color="#9467bd", dash="dash", width=1.5)),
-                secondary_y=False,
-            )
-
-        # Heat Pump (MW)
-        if "b_elec -> heat_pump" in df_f.columns:
-            hp_mw = df_f["b_elec -> heat_pump"] / 1000.0
-            fig.add_trace(
-                go.Scatter(x=df_f.index, y=hp_mw, name="Heat Pump (MW)", line=dict(color="#1f77b4", width=1.5)),
-                secondary_y=False,
-            )
-
-        # Solar PV (MW)
-        if "solar_pv -> b_elec" in df_f.columns:
-            pv_mw = df_f["solar_pv -> b_elec"] / 1000.0
-            fig.add_trace(
-                go.Scatter(x=df_f.index, y=pv_mw, name="Solar PV (MW)", line=dict(color="#ff7f0e", width=1.5)),
-                secondary_y=False,
-            )
-
-        # Spot Price overlay on secondary Y axis
-        if df_m is not None and "elec_spot_eur_mwh" in df_m.columns:
-            price_sub = df_m.reindex(df_f.index)
-            fig.add_trace(
-                go.Scatter(x=price_sub.index, y=price_sub["elec_spot_eur_mwh"], name="Spot Price (EUR/MWh)", line=dict(color="#7f7f7f", dash="dot", width=1), opacity=0.7),
-                secondary_y=True,
-            )
-
-        start_str = str(df_f.index[0])[:16]
-        end_str = str(df_f.index[-1])[:16]
-        fig.update_layout(
-            title=dict(text=f"Henkel Holthausen Operational Dispatch ({start_str} to {end_str})", font=dict(size=16)),
-            xaxis=dict(title="Timestamp", rangeslider=dict(visible=True)),
-            yaxis=dict(title="Power / Dispatch (MW)"),
-            yaxis2=dict(title="Electricity Spot Price (EUR/MWh)", overlaying="y", side="right"),
-            template="plotly_white",
-            hovermode="x unified",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            margin=dict(l=50, r=50, t=80, b=50),
-        )
-
-        fig.show()
-        return fig
-    except Exception:
-        setup_visualization_style()
-        fig, ax1 = plt.subplots(figsize=(14, 6))
-        if "grid_electricity -> b_elec" in df_f.columns:
-            ax1.plot(df_f.index, df_f["grid_electricity -> b_elec"] / 1000.0, label="Grid Import (MW)", color="#2ca02c")
-        if "gas_chp -> b_elec" in df_f.columns:
-            ax1.plot(df_f.index, df_f["gas_chp -> b_elec"] / 1000.0, label="Gas CHP (MW)", color="#d62728")
-        if "b_elec -> electric_boiler" in df_f.columns:
-            ax1.plot(df_f.index, df_f["b_elec -> electric_boiler"] / 1000.0, label="E-Boiler (MW)", color="#9467bd", linestyle="--")
-
-        ax1.set_ylabel("Power (MW)")
-        ax1.legend(loc="upper left")
-
-        if df_m is not None and "elec_spot_eur_mwh" in df_m.columns:
-            ax2 = ax1.twinx()
-            price_sub = df_m.reindex(df_f.index)
-            ax2.plot(price_sub.index, price_sub["elec_spot_eur_mwh"], color="#7f7f7f", linestyle=":", label="Spot Price (EUR/MWh)")
-            ax2.set_ylabel("Spot Price (EUR/MWh)")
-
-        plt.title("Henkel Holthausen Operational Dispatch Profile")
-        plt.tight_layout()
-        plt.show()
-        return fig
-
-
-def plot_cost_per_ton_comparison(
-    baseline_cost: float = 309.02,
-    op_cost: float = 307.05,
-    inv_cost: Optional[float] = 276.49
-) -> None:
-    """
-    Renders a clean bar chart comparing industrial site energy cost per ton output (EUR/ton)
-    across Baseline, Operation Hub, and Decision Hub scenarios.
-    """
-    setup_visualization_style()
-
-    categories = ["Baseline (Grid Only)", "Operation Hub (Dispatch MILP)"]
-    costs = [baseline_cost, op_cost]
-    colors = ["#e74c3c", "#3498db"]
-
-    if inv_cost is not None:
-        categories.append("Decision Hub (CAPEX + OPEX)")
-        costs.append(inv_cost)
-        colors.append("#2ecc71")
-
-    fig, ax = plt.subplots(figsize=(8, 5))
-    bars = ax.bar(categories, costs, color=colors, width=0.55, edgecolor="black", linewidth=0.8)
-
-    # Annotate bars with values
-    for bar in bars:
-        height = bar.get_height()
-        ax.annotate(
-            f"EUR {height:.2f} / t",
-            xy=(bar.get_x() + bar.get_width() / 2, height),
-            xytext=(0, 5),
-            textcoords="offset points",
-            ha="center",
-            va="bottom",
-            fontweight="bold",
-            fontsize=10,
-        )
-
-    # Highlight savings
-    if inv_cost is not None:
-        total_savings = baseline_cost - inv_cost
-        pct_savings = (total_savings / baseline_cost) * 100
-        ax.set_title(
-            f"Energy Cost per Ton Comparison (Total Savings: EUR {total_savings:.2f}/ton | -{pct_savings:.1f}%)",
-            fontsize=12,
-            fontweight="bold",
-        )
-    else:
-        op_savings = baseline_cost - op_cost
-        ax.set_title(f"Energy Cost per Ton Comparison (Operation Savings: EUR {op_savings:.2f}/ton)", fontsize=12, fontweight="bold")
-
-    ax.set_ylabel("Site Energy Cost (EUR / ton output)", fontsize=11, fontweight="bold")
-    ax.set_ylim(0, max(costs) * 1.18)
-    ax.grid(True, axis="y", alpha=0.3)
+    fig.suptitle(title, fontsize=14, fontweight="bold")
     plt.tight_layout()
-    plt.show()
+    return fig
 
 
-def create_financial_summary_table(
-    meta_op: Dict[str, Any],
-    meta_inv: Dict[str, Any],
-    annual_production_tons: float = 450000.0,
-    wacc: float = 0.07,
-    project_lifetime_years: int = 15,
-) -> pd.DataFrame:
-    """
-    Generates a financial summary table translating oemof.solph optimization results
-    into executive investment metrics: CAPEX, OPEX, Annual Savings, NPV, IRR, Payback Period,
-    CO2 avoided, and EUR/ton output.
-    """
-    baseline_cost_per_ton = 309.02
-    baseline_annual_bill = baseline_cost_per_ton * annual_production_tons
+def plot_dispatch_stacks_interactive(results: Dict[str, Any], title: str = "Interactive PyPSA Multi-Carrier Dispatch Stack"):
+    """Generates an interactive Plotly dashboard for electricity, steam, and heat dispatch."""
+    if not HAS_PLOTLY:
+        return plot_dispatch_stacks(results, title)
 
-    op_cost_per_ton = meta_op.get("cost_per_ton_eur", 307.05)
-    op_annual_bill = op_cost_per_ton * annual_production_tons
+    n = results["network"]
+    snapshots = n.snapshots
 
-    inv_cost_per_ton = meta_inv.get("cost_per_ton_eur", 276.49)
-    inv_annual_bill = inv_cost_per_ton * annual_production_tons
+    fig = make_subplots(
+        rows=3, cols=1,
+        subplot_titles=("Electricity Bus (b_elec) [kW]", "HT Steam Bus (b_steam_ht) [kW_th]", "LT Process Heat Bus (b_heat_lt) [kW_th]"),
+        vertical_spacing=0.08,
+        shared_xaxes=True,
+    )
 
-    # Annual OPEX Savings relative to baseline
-    op_annual_savings = baseline_annual_bill - op_annual_bill
-    inv_annual_savings = baseline_annual_bill - inv_annual_bill
+    # 1. Electricity
+    if "grid_electricity" in n.generators_t.p.columns:
+        fig.add_trace(go.Scatter(x=snapshots, y=n.generators_t.p["grid_electricity"], name="Grid Elec", stackgroup="elec", fillcolor="#3182bd"), row=1, col=1)
+    if "solar_pv" in n.generators_t.p.columns:
+        fig.add_trace(go.Scatter(x=snapshots, y=n.generators_t.p["solar_pv"], name="Solar PV", stackgroup="elec", fillcolor="#fec44f"), row=1, col=1)
+    if "gas_chp" in n.links_t.p1.columns:
+        fig.add_trace(go.Scatter(x=snapshots, y=n.links_t.p1["gas_chp"], name="CHP Elec", stackgroup="elec", fillcolor="#e6550d"), row=1, col=1)
 
-    # Estimate total green CAPEX based on typical investment sizing
-    # PV: 25MWp * €800 = €20M, BESS: 50MWh * €350 = €17.5M, HTHP: 40MW * €600 = €24M, TES: 40MWh * €120 = €4.8M
-    total_capex = 24500000.0  # ~€24.5M estimated co-optimized investment
+    # 2. HT Steam
+    if "gas_chp" in n.links_t.p2.columns:
+        fig.add_trace(go.Scatter(x=snapshots, y=n.links_t.p2["gas_chp"], name="CHP Steam", stackgroup="steam", fillcolor="#e6550d"), row=2, col=1)
+    if "gas_boiler" in n.links_t.p1.columns:
+        fig.add_trace(go.Scatter(x=snapshots, y=n.links_t.p1["gas_boiler"], name="Gas Boiler", stackgroup="steam", fillcolor="#fd8d3c"), row=2, col=1)
+    if "electric_boiler" in n.links_t.p1.columns:
+        fig.add_trace(go.Scatter(x=snapshots, y=n.links_t.p1["electric_boiler"], name="E-Boiler", stackgroup="steam", fillcolor="#74c476"), row=2, col=1)
 
-    # Net Present Value (NPV) computation over lifetime
-    r = wacc
-    n = project_lifetime_years
-    annuity_factor = ((1 + r) ** n - 1) / (r * (1 + r) ** n)
-    npv_eur = (inv_annual_savings * annuity_factor) - total_capex
+    # 3. LT Heat
+    if "heat_pump" in n.links_t.p1.columns:
+        fig.add_trace(go.Scatter(x=snapshots, y=n.links_t.p1["heat_pump"], name="HTHP Heat", stackgroup="heat", fillcolor="#2ca02c"), row=3, col=1)
+    if "steam_to_heat_exchanger" in n.links_t.p1.columns:
+        fig.add_trace(go.Scatter(x=snapshots, y=n.links_t.p1["steam_to_heat_exchanger"], name="Steam-HX Heat", stackgroup="heat", fillcolor="#bcbd22"), row=3, col=1)
 
-    # Internal Rate of Return (IRR) approximation
-    # NPV = 0 -> total_capex / inv_annual_savings = annuity_factor(irr, n)
-    simple_payback_years = total_capex / inv_annual_savings if inv_annual_savings > 0 else 0.0
-    irr_pct = (inv_annual_savings / total_capex) * 100.0 if total_capex > 0 else 0.0
-
-    metrics_data = [
-        {"Metric": "Baseline Energy Cost per Ton", "Baseline Scenario": f"EUR {baseline_cost_per_ton:.2f} / t", "Operation Hub": "-", "Decision Hub": "-"},
-        {"Metric": "Optimized Cost per Ton", "Baseline Scenario": "-", "Operation Hub": f"EUR {op_cost_per_ton:.2f} / t", "Decision Hub": f"EUR {inv_cost_per_ton:.2f} / t"},
-        {"Metric": "Annual Site Energy Expenditure", "Baseline Scenario": f"EUR {baseline_annual_bill/1e6:.2f} M/yr", "Operation Hub": f"EUR {op_annual_bill/1e6:.2f} M/yr", "Decision Hub": f"EUR {inv_annual_bill/1e6:.2f} M/yr"},
-        {"Metric": "Annual Cost Savings vs Baseline", "Baseline Scenario": "EUR 0.00 M/yr", "Operation Hub": f"EUR {op_annual_savings/1e6:.2f} M/yr", "Decision Hub": f"EUR {inv_annual_savings/1e6:.2f} M/yr"},
-        {"Metric": "Green CAPEX Investment", "Baseline Scenario": "EUR 0.00 M", "Operation Hub": "EUR 0.00 M", "Decision Hub": f"EUR {total_capex/1e6:.2f} M"},
-        {"Metric": "Net Present Value (NPV @ 7% WACC, 15y)", "Baseline Scenario": "-", "Operation Hub": "-", "Decision Hub": f"EUR {npv_eur/1e6:.2f} M"},
-        {"Metric": "Internal Rate of Return (IRR)", "Baseline Scenario": "-", "Operation Hub": "-", "Decision Hub": f"{irr_pct:.1f}%"},
-        {"Metric": "Simple Payback Period", "Baseline Scenario": "-", "Operation Hub": "Immediate", "Decision Hub": f"{simple_payback_years:.1f} years"},
-        {"Metric": "Annual CO2 Emissions Avoided", "Baseline Scenario": "0 tons CO2", "Operation Hub": f"{meta_op.get('co2_avoided_tons', 0):,.0f} tons", "Decision Hub": f"{meta_inv.get('co2_avoided_tons', 0):,.0f} tons"},
-    ]
-
-    return pd.DataFrame(metrics_data)
+    fig.update_layout(height=800, title_text=title, template="plotly_white", hovermode="x unified")
+    return fig
 
 
-def create_asset_sizing_table(inv_capacities: Dict[str, float]) -> pd.DataFrame:
-    """Creates a formatted DataFrame summarizing optimal asset sizing results from Decision Hub."""
-    asset_rows = []
-    for key, cap in inv_capacities.items():
-        clean_name = key.replace("Invest: ", "").replace("Invest Storage: ", "")
-        unit = "kWp" if "pv" in clean_name else ("kWh_th" if "tes" in clean_name else ("kWh" if "bess" in clean_name else "kW_th"))
-        asset_rows.append({
-            "Asset Component": clean_name.upper(),
-            "Optimal Sizing Capacity": f"{cap:,.2f}",
-            "Unit": unit
-        })
-    return pd.DataFrame(asset_rows)
+def plot_storage_dynamics_interactive(results: Dict[str, Any], title: str = "BESS & TES State-of-Charge (SOC) Dynamics"):
+    """Generates interactive SOC plot for Battery and Thermal Energy Storage."""
+    n = results["network"]
+    snapshots = n.snapshots
+
+    if not HAS_PLOTLY:
+        fig, ax = plt.subplots(figsize=(12, 5))
+        if "bess" in n.stores_t.e.columns:
+            ax.plot(snapshots, n.stores_t.e["bess"], label="BESS SOC [kWh]", color="#3182bd", linewidth=2)
+        if "tes" in n.stores_t.e.columns:
+            ax.plot(snapshots, n.stores_t.e["tes"], label="TES SOC [kWh_th]", color="#2ca02c", linewidth=2)
+        ax.set_title(title)
+        ax.set_ylabel("Energy Stored [kWh]")
+        ax.grid(True, linestyle="--")
+        ax.legend()
+        return fig
+
+    fig = go.Figure()
+    if "bess" in n.stores_t.e.columns:
+        fig.add_trace(go.Scatter(x=snapshots, y=n.stores_t.e["bess"], name="BESS SOC [kWh]", line=dict(color="#3182bd", width=2.5)))
+    if "tes" in n.stores_t.e.columns:
+        fig.add_trace(go.Scatter(x=snapshots, y=n.stores_t.e["tes"], name="TES SOC [kWh_th]", line=dict(color="#2ca02c", width=2.5)))
+
+    fig.update_layout(title=title, xaxis_title="Timestamp", yaxis_title="State of Charge [kWh]", template="plotly_white")
+    return fig
 
 
-def plot_energy_system_graph(
-    model_or_es: Any,
-    bus_label: str = "b_elec",
-    figsize: tuple = (14, 8),
-) -> None:
-    """
-    Dual-mode EnergySystem visualization helper:
-    1. Pre-solve (when passed solph.EnergySystem or unsolved model): Renders Energy System Topology Graph.
-    2. Post-solve (when passed solved solph.Model): Renders oemof_visio Bus I/O Balance Plot.
+def plot_price_duration_curves_interactive(results: Dict[str, Any], title: str = "Electricity Spot & Marginal Bus Price Duration Curve"):
+    """Plots marginal price duration curve from PyPSA bus shadow prices."""
+    n = results["network"]
+    snapshots = n.snapshots
 
-    Args:
-        model_or_es: solph.EnergySystem, HenkelEnergySystem wrapper, or solved solph.Model.
-        bus_label: Bus label for post-solve I/O balance plotting (default: "b_elec").
-        figsize: Figure size as (width, height) tuple.
-    """
-    import oemof.solph as solph
+    grid_mc = n.generators_t.marginal_cost["grid_electricity"] if "grid_electricity" in n.generators_t.marginal_cost.columns else n.generators.loc["grid_electricity", "marginal_cost"]
+    price_series = pd.Series(grid_mc, index=snapshots) * 1000.0  # EUR/MWh
+    sorted_prices = price_series.sort_values(ascending=False).values
+    hours = np.arange(1, len(sorted_prices) + 1)
 
-    # Extract underlying energy system or model if wrapped
-    es = getattr(model_or_es, "solph_es", getattr(model_or_es, "es", model_or_es))
-    model = getattr(model_or_es, "model", model_or_es)
+    if not HAS_PLOTLY:
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.plot(hours, sorted_prices, color="#d62728", linewidth=2, label="Grid Elec Price [EUR/MWh]")
+        ax.set_title(title)
+        ax.set_xlabel("Hours")
+        ax.set_ylabel("Price [EUR/MWh]")
+        ax.grid(True, linestyle="--")
+        return fig
 
-    # Check if model is a solved solph.Model instance
-    is_solved = isinstance(model, solph.Model) and hasattr(model, "objective") and model.objective is not None
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=hours, y=sorted_prices, name="Grid Electricity Price", line=dict(color="#d62728", width=2.5)))
+    fig.update_layout(title=title, xaxis_title="Hours", yaxis_title="Electricity Price [EUR/MWh]", template="plotly_white")
+    return fig
 
-    if not is_solved or isinstance(model_or_es, solph.EnergySystem):
-        # ---------------------------------------------------------
-        # PRE-SOLVE: Topology Network Graph
-        # ---------------------------------------------------------
-        import networkx as nx
 
-        fig, ax = plt.subplots(1, 1, figsize=figsize)
-        graph = nx.DiGraph()
+def plot_asset_economics_interactive(results: Dict[str, Any], title: str = "PyPSA Asset Financial Economics & Cost Breakdown"):
+    """Generates diverging net margin and CAPEX/OPEX cost decomposition bar chart."""
+    opex = results["opex_eur"]
+    capex = results["capex_annualized_eur"]
+    total = results["total_cost_eur"]
 
-        if hasattr(es, "nodes"):
-            for node in es.nodes:
-                label = str(getattr(node, "label", node))
-                graph.add_node(label)
+    categories = ["OPEX (Energy Imports)", "Annualized CAPEX", "Total Energy Cost"]
+    values = [opex, capex, total]
 
-        if hasattr(es, "flows"):
-            for (i, o) in es.flows().keys():
-                u = str(getattr(i, "label", i))
-                v = str(getattr(o, "label", o))
-                graph.add_edge(u, v)
-
-        pos = nx.spring_layout(graph, seed=42, k=2.0)
-
-        node_colors = []
-        for node in graph.nodes():
-            label = str(node)
-            if label.startswith("b_"):
-                node_colors.append("#4FC3F7")   # Light blue for buses
-            else:
-                node_colors.append("#81C784")   # Light green for components
-
-        nx.draw(
-            graph, pos,
-            with_labels=True,
-            font_size=8,
-            node_size=2800,
-            node_color=node_colors,
-            edge_color="#90A4AE",
-            arrows=True,
-            arrowsize=15,
-            ax=ax,
-        )
-        ax.set_title("Energy System Topology Graph", fontsize=14, fontweight="bold")
+    if not HAS_PLOTLY:
+        fig, ax = plt.subplots(figsize=(8, 5))
+        ax.bar(categories, values, color=["#3182bd", "#fd8d3c", "#2ca02c"])
+        ax.set_ylabel("EUR")
+        ax.set_title(title)
+        for i, v in enumerate(values):
+            ax.text(i, v + 1000, f"€{v:,.0f}", ha="center", fontweight="bold")
         plt.tight_layout()
-        plt.show()
-    else:
-        # ---------------------------------------------------------
-        # POST-SOLVE: oemof_visio Bus I/O Balance Plot
-        # ---------------------------------------------------------
-        try:
-            import oemof_visio as vis
-        except ImportError:
-            vis = None
+        return fig
 
-        results = solph.processing.results(model)
-        target_bus = None
-
-        if hasattr(model, "es") and hasattr(model.es, "nodes"):
-            for node in model.es.nodes:
-                if getattr(node, "label", str(node)) == bus_label:
-                    target_bus = node
-                    break
-
-        if target_bus is None:
-            for (i, o) in results.keys():
-                if hasattr(i, "label") and i.label == bus_label:
-                    target_bus = i
-                    break
-                elif hasattr(o, "label") and o.label == bus_label:
-                    target_bus = o
-                    break
-
-        if target_bus is not None:
-            bus_results = solph.views.node(results, target_bus)
-            if vis is not None and hasattr(vis, "Plot"):
-                my_plot = vis.Plot(bus_results, figsize=figsize)
-                my_plot.draw()
-                plt.title(f"I/O Balance for Bus: {bus_label}", fontsize=14, fontweight="bold")
-                plt.tight_layout()
-                plt.show()
-            else:
-                df_seq = bus_results["sequences"]
-                fig, ax = plt.subplots(figsize=figsize)
-                df_seq.plot(ax=ax, linewidth=1.5)
-                ax.set_title(f"I/O Balance for Bus: {bus_label}", fontsize=14, fontweight="bold")
-                ax.set_ylabel("Power / Flow (kW)")
-                plt.tight_layout()
-                plt.show()
-        else:
-            print(f"Warning: Bus with label '{bus_label}' not found in model results.")
+    fig = go.Figure(data=[
+        go.Bar(x=categories, y=values, marker_color=["#3182bd", "#fd8d3c", "#2ca02c"], text=[f"€{v:,.0f}" for v in values], textposition="auto")
+    ])
+    fig.update_layout(title=title, yaxis_title="EUR", template="plotly_white")
+    return fig
 
 
-def create_optimization_summary_table(solution_meta: Dict[str, Any]) -> pd.DataFrame:
-    """
-    Creates a formatted summary DataFrame from optimization results metadata.
-    Shows key cost metrics, simulation parameters, and CO2 emissions.
+def plot_sec19_grid_fee_protection_interactive(results: Dict[str, Any], threshold_kw: float = 60000.0, title: str = "Sec19 StromNEV Peak Grid Demand Profile"):
+    """Plots hourly grid electricity import profile against 60 MW continuous baseload threshold."""
+    n = results["network"]
+    snapshots = n.snapshots
+    grid_p = n.generators_t.p["grid_electricity"]
 
-    Args:
-        solution_meta: The dict returned by HenkelEnergySystem.solve().
+    if not HAS_PLOTLY:
+        fig, ax = plt.subplots(figsize=(12, 5))
+        ax.plot(snapshots, grid_p, label="Grid Elec Import [kW]", color="#3182bd", linewidth=1.5)
+        ax.axhline(threshold_kw, color="red", linestyle="--", linewidth=2, label=f"Sec19 Threshold ({threshold_kw/1000:.0f} MW)")
+        ax.set_title(title)
+        ax.set_ylabel("Grid Power [kW]")
+        ax.grid(True, linestyle="--")
+        ax.legend()
+        return fig
 
-    Returns:
-        pd.DataFrame with columns [Metric, Value, Unit].
-    """
-    rows = [
-        {"Metric": "Total System Cost", "Value": f"{solution_meta['total_cost_eur']:,.2f}", "Unit": "EUR"},
-        {"Metric": "Cost per Ton", "Value": f"{solution_meta['cost_per_ton_eur']:,.2f}", "Unit": "EUR/ton"},
-        {"Metric": "Timesteps Simulated", "Value": str(solution_meta["timesteps"]), "Unit": "hours"},
-        {"Metric": "Optimization Mode", "Value": solution_meta["mode"], "Unit": "-"},
-    ]
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=snapshots, y=grid_p, name="Grid Import [kW]", line=dict(color="#3182bd", width=2)))
+    fig.add_trace(go.Scatter(x=[snapshots[0], snapshots[-1]], y=[threshold_kw, threshold_kw], name="Sec19 Threshold (60 MW)", line=dict(color="red", width=2, dash="dash")))
+    fig.update_layout(title=title, xaxis_title="Timestamp", yaxis_title="Grid Import [kW]", template="plotly_white")
+    return fig
 
-    # Add CO2 metrics if available from post-processing
-    if "total_co2_tons" in solution_meta:
+
+def create_summary_dataframe(results_dict: Dict[str, Dict[str, Any]], annual_tonnage: float = 450000.0) -> pd.DataFrame:
+    """Compiles scenario results into a clean financial comparison table (EUR/ton, OPEX, CAPEX, CO2)."""
+    rows = []
+    for scenario_name, res in results_dict.items():
+        tot_cost = res["total_cost_eur"]
+        cost_per_ton = tot_cost / annual_tonnage
         rows.append({
-            "Metric": "Total CO2 Emissions",
-            "Value": f"{solution_meta['total_co2_tons']:,.1f}",
-            "Unit": "tCO2",
-        })
-    if "co2_avoided_tons" in solution_meta:
-        rows.append({
-            "Metric": "CO2 Avoided vs. Gas Baseline",
-            "Value": f"{solution_meta['co2_avoided_tons']:,.1f}",
-            "Unit": "tCO2",
+            "Scenario": scenario_name,
+            "Total Cost (EUR)": tot_cost,
+            "Cost per Ton (EUR/ton)": cost_per_ton,
+            "OPEX (EUR)": res["opex_eur"],
+            "Annualized CAPEX (EUR)": res["capex_annualized_eur"],
+            "Emissions (tCO2)": res["emissions_t_co2"],
+            "Peak Grid Demand (MW)": res["peak_grid_demand_kw"] / 1000.0,
+            "Sec19 Compliant": not res["sec19_violation"],
         })
 
-    return pd.DataFrame(rows)
+    df_summary = pd.DataFrame(rows).set_index("Scenario")
+    return df_summary
