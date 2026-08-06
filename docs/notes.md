@@ -164,7 +164,7 @@ Total annual cost = 280 * 450,000 = 126,000,000 Euro / year electricity cost
 5. Use mermaid to show how I approach this challenge step by step and attach it in README.md 
 
 
-What I want for challenge.ipynb:
+### What I want for challenge.ipynb (Done):
 - I want to create a utils.py in /src for any printing and plotting visualization abstraction so that in the challenge.ipynb, there is no more messy syntaxes for visualization
 - I like the first intro executive summary already
 - First code section should be just importing all the necessary libraries, APIs, classes as it already is right now. Move the visualization style parameters to utils.py and verify solver installation part to optimization_mode.py
@@ -204,38 +204,17 @@ This user config will be placed once before the operation hub solution and the o
 
 
 
-### Notes 5 August
 
-- Explain why this approach is chosen and why this extent of abstraction (why not more or less)
-- Elaborate the process of tackling this challenge (mermaid diagram w/ extra brief note the importance of each step according to my perspective) ->in README.md
-1. Business analysis and data collection
-To get a sense of the line of business, energy consumption, & magnitude
-2. Idea brainstorming and Goals elaboration 
-To land on an impactful solution with clear goal with current estimation
-3. Spec engineering and system abstraction creation
-Spec engineering for Spec-driven Development was done to set a ground truth when working with agentic AI to set a clear foundation of what tools to be used and to what end. The abstraction creation is system design thinking to ensure clean architechture best practice while avoiding too much abstraction for this specific challenge purpose.
-4. Setting up skills, rules, and loops for agentic AI
-To add an extra layer of capabilities to the AI to based its reasoning on clear resources specifically for different technical purposes and to validat and correct when I make a mistake: Energy market specialist, MILP specialist, Thernomdynamics specialist, Python best practice, etc
-5. Implementation, Review, Iteration
-For every details written in the spec sheet, multiple phases each with predefined tasks are generated. It is important to review, fix, and iterate for each of the phase in order to make sure goal is met and codebase remain managable
-6. Final Validation
-Final testing of logical accuracy, reasoning, and deliveries of the challenge deliverables
 
-Notes challenge.ipynb: 
+
+### Notes challenge.ipynb (Done): 
 - For the operation hub, the set fixed_components_sizing CAPEX should not be accounted into the total cost since it is an existing sizing component
 - plot_seasonal_dispatch_subplots() got an unexpected keyword argument 'df_op_flows_full' I got this error because I ran the optimization only for 1 week. I guess this function should be modular or flexible such that it plots just for the entirety of the start_time and end_time as an interactive plot where user can zoom in and zoom out, activate or deactivate a plot or legend,
 - The optimization ran 23.9 seconds for a 1 week operationhub optimization which is too long condidering the short timestep windonw. Brainstorm with the MILP agent what we can do to improve the computation time? Is there modelling fixed that can make computation time more efficient or is there other computational overhead that is a bottleneck?
 - The timestep of the solve should be based on the config start_time and end_time, basically counting how many hours in between the two calendar
 
-Notes 6 August:
-- I think PV profile is still bad. Check the profile creation function again. 
-- Implement the changes in readme and challenge.ipynb
-- Make sure the investment and operation mode point to the same definition of the model
-- If the change to oemof convention solph results in a way longer computational time, fallback to the appsihighs approach
-- Update the status of SPEC.md at the end to become 'done'
-- Baseline calculation should be done in python code with a high level explanation in the markdown cell above it. 
 
-
+### Done
 - For each of the config being initialized as an es = solph.EnergySystem(timeindex=timeindex, infer_last_interval=False) (op_config or inv_config), the es object should only build the components listed in the fixed_components_sizing: Any = ...,variable_components_sizing: Any = ..., and also only build buses that are attached to them, the other components or buses that are not mentioned or attached, don't include, except grid!
 - Use import oemof_visio as vis in replacement to  import networkx as nx in the existing plot_energy_system_graph
 from oemof.solph import Results
@@ -251,7 +230,7 @@ my_plot.draw()
 
 
 
-Some changes and updates that I want to plan (DONE):
+## Some changes and updates that I want to plan (DONE):
    - ep_cost calculation change from  def _get_annualized_cost(self, capex_per_unit: float, lifetime_years: int) -> float: to the built in oemof.solph one. Make sure to use the config file for the inputs of the function. 
 capex = 1000  # investment cost
 lifetime = 20  # life expectancy
@@ -273,6 +252,44 @@ nx.draw(graph, with_labels=True, font_size=8)
    tce = results["objective"]? is this a built in oemof.solph tool? can I use it to show the summary of the optimization results in y challenge.ipynb?
    - For all the get functions to retrieve data from either config or result, instead of falling back to default value if problem occurs, raise an error instead with a warning so that user knows what is wrong and don't get a fake result. 
 
-Future update:
+### Notes TBD:
+- I think PV profile is still bad. Check the profile creation function again. 
+- Make sure the investment and operation mode point to the same definition of the model
+- Update the status of SPEC.md at the end to become 'done'
+- Baseline calculation should be done in python code with a high level explanation in the markdown cell above it. 
+- The baseline calculation should use real market data
+- The optimization energy per ton calculation seems off, gotta check it again
+- Plot should be fixed: I want to visualize the whole electricity bus (2 subplot of PV, grid, demand, CHPelec + Battery & SOC) and thermal bus operation (Demand, e-boiler, CHPheat ) 
+- The topology plot is weird, I want the one robin has. I don' think its using oemof.visio already
+- Add electricity curtailment sink (done)
+- Check again whether hthp build logic makes sense
+- Why is there 8737 timesteps?
+- How can I simulate 7000 h or capacity factor of 85%?
+- I want to raise warning for 
+- Why is having components such pv and bess and other for free does not really change the energy cost per ton
+- Does CO2 tax allow affect gas cost but not electricity cost
+- Isn't CHPelec and thermal capacity directly linked to each other? does it make sense to be able to separate their sizing?
+
+### Notes on content
+
+- Explain why this approach is chosen and why this extent of abstraction (why not more or less)
+- Elaborate the process of tackling this challenge (mermaid diagram w/ extra brief note the importance of each step according to my perspective) ->in README.md
+1. Business analysis and data collection
+To get a sense of the line of business, energy consumption, & magnitude
+2. Idea brainstorming and Goals elaboration 
+To land on an impactful solution with clear goal with current estimation
+3. Spec engineering and system abstraction creation
+Spec engineering for Spec-driven Development was done to set a ground truth when working with agentic AI to set a clear foundation of what tools to be used and to what end. The abstraction creation is system design thinking to ensure clean architechture best practice while avoiding too much abstraction for this specific challenge purpose.
+4. Setting up skills, rules, and loops for agentic AI
+To add an extra layer of capabilities to the AI to based its reasoning on clear resources specifically for different technical purposes and to validat and correct when I make a mistake: Energy market specialist, MILP specialist, Thernomdynamics specialist, Python best practice, etc
+5. Implementation, Review, Iteration
+For every details written in the spec sheet, multiple phases each with predefined tasks are generated. It is important to review, fix, and iterate for each of the phase in order to make sure goal is met and codebase remain managable
+6. Final Validation
+Final testing of logical accuracy, reasoning, and deliveries of the challenge deliverables
+- Add the aerial view from google earth of the empty lots on the big building in Dusseldorf site
+- Create a UML class diagarm in docs and sequence diagram or other insightful diagram in the readme.md using mermaid
+
+
+### Future update:
 1. Make grid also configurable
 2. Create different classes in different modules for each component. Make the build function modular
