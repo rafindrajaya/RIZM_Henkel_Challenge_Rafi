@@ -48,8 +48,10 @@ def fetch_smard_electricity_prices(year: int = 2025) -> pd.Series:
         raise ValueError(f"No SMARD data series retrieved for year {year}")
 
     df_smard = pd.DataFrame(all_series, columns=["timestamp_ms", "elec_spot_eur_mwh"]).dropna()
-    df_smard["timestamp"] = pd.to_datetime(df_smard["timestamp_ms"], unit="ms", utc=True).dt.tz_convert(
-        "Europe/Berlin"
+    df_smard["timestamp"] = (
+        pd.to_datetime(df_smard["timestamp_ms"], unit="ms", utc=True)
+        .dt.tz_convert("Europe/Berlin")
+        .dt.tz_localize(None)
     )
     df_smard = df_smard.drop_duplicates(subset=["timestamp"]).set_index("timestamp").sort_index()
 
@@ -102,7 +104,7 @@ def fetch_open_meteo_solar(
 
 def generate_synthetic_solar_data(year: int = 2025) -> pd.DataFrame:
     """Generates physically sound solar irradiance profile for Düsseldorf if offline."""
-    times = pd.date_range(start=f"{year}-01-01", end=f"{year}-12-31 23:00", freq="h", tz="Europe/Berlin")
+    times = pd.date_range(start=f"{year}-01-01", end=f"{year}-12-31 23:00", freq="h")
     day_of_year = times.dayofyear
     hour = times.hour
 
@@ -127,12 +129,13 @@ def generate_benchmark_market_data(year: int = 2025) -> pd.DataFrame:
     - CO2 Surcharge (€/ton): €85/ton ETS/BEHG -> €17.085/MWh_gas surcharge.
     - Grid Fees: €25/MWh standard, €3.75/MWh (§19 StromNEV 85% discount).
     """
-    times = pd.date_range(start=f"{year}-01-01", end=f"{year}-12-31 23:00", freq="h", tz="Europe/Berlin")
+    times = pd.date_range(start=f"{year}-01-01", end=f"{year}-12-31 23:00", freq="h")
     month = times.month
 
     # Try fetching real 2025 SMARD spot prices
     try:
         smard_series = fetch_smard_electricity_prices(year=year)
+        smard_series.index = pd.to_datetime(smard_series.index).tz_localize(None)
         # Reindex to ensure full 8760 hourly coverage
         elec_spot = smard_series.reindex(times).ffill().bfill().values
     except Exception as e:

@@ -33,10 +33,11 @@ Build a production-grade, modular, reproducible MVP repository that answers the 
 | Environment | `uv` | >=0.11 | Cross-platform lockfile via `uv.lock` |
 | Optimization | `oemof.solph` | >=0.5.3 | MILP energy system graph definition |
 | Solver | HiGHS via `highspy` | >=1.7.0 | Accessed through Pyomo `appsi_highs` SolverFactory |
-| Solar Modeling | `pvlib` | >=0.11.0 | **Not yet integrated -- see Task 3.2** |
+| Validation | `pydantic` | >=2.0.0 | User configuration schemas and strict data validation |
+| Solar Modeling | `pvlib` | >=0.11.0 | Integrated Plane-of-Array irradiance & temperature yield |
 | Data | `pandas`, `numpy` | >=2.0.0, >=1.24.0 | DataFrames and numerical computation |
 | Visualization | `matplotlib`, `seaborn` | >=3.7.0, >=0.12.0 | Plots in notebook |
-| API | `requests` | >=2.31.0 | Open-Meteo weather data fetching |
+| API | `requests` | >=2.31.0 | Open-Meteo & SMARD market API data fetching |
 | Spreadsheet IO | `openpyxl` | >=3.1.0 | Excel export if needed |
 | Notebook | `jupyter` | >=1.0.0 | Executive deliverable |
 | Build | `setuptools` | >=61.0 | Build backend |
@@ -57,9 +58,9 @@ RIZM_challenge_Rafi/
 │       ├── thermodynamics-exergy-specialist.md
 │       └── solution-architect-career-coach.md
 ├── data/
-│   ├── market_data_2024.csv           # Pre-bundled SMARD electricity + THE gas prices (hourly, 1yr)
-│   ├── solar_data_duesseldorf_2024.csv # Open-Meteo GHI/DNI/DHI + temp (hourly, 1yr)
-│   └── components/                    # [NEW] TOML config files for each asset type
+│   ├── market_data_2025.csv           # Live SMARD API filter 4169 electricity + THE gas prices (hourly 2025, 1yr)
+│   ├── solar_data_duesseldorf_2025.csv # Open-Meteo GHI/DNI/DHI + temp (hourly 2025, 1yr)
+│   └── components/                    # TOML config files for each asset type
 │       ├── pv.toml
 │       ├── bess.toml
 │       ├── chp.toml
@@ -74,13 +75,14 @@ RIZM_challenge_Rafi/
 ├── src/
 │   ├── __init__.py
 │   ├── external_api.py                # Market & weather data pipeline
-│   └── optimization_model.py          # OOP oemof.solph MILP energy system builder
+│   ├── optimization_model.py          # OOP oemof.solph MILP model & Pydantic config schemas
+│   └── utils.py                       # Visualization, plotting & financial summary abstraction
 ├── scripts/
 │   └── build_notebook.py              # Automated notebook generator
 ├── docs/
 │   ├── challenge_question.md          # Original RIZM challenge brief
 │   ├── prompt.md                      # Solution planning notes
-│   ├── notes.md                       # Raw working notes (superseded by this SPEC)
+│   ├── notes.md                       # Working notes and user requirements
 │   └── checklist.md                   # Pre-submission checklist
 ├── challenge.ipynb                    # Main executive notebook deliverable
 ├── pyproject.toml                     # Project metadata and dependencies
@@ -226,6 +228,17 @@ c_rate = 0.5
 | 2.6 | `src/optimization_model.py` | Downgrade sec19 StromNEV from primary feature to one configurable parameter among others (regulation expires ~2028) |
 | 2.7 | `src/external_api.py` | Verify `highspy` is properly imported and accessible through `appsi_highs` solver path |
 
+### Phase 2.5: Model Convention Alignment [STATUS: DONE]
+
+| Task | File(s) | Description |
+|------|---------|-------------|
+| 2.5.1 | `src/optimization_model.py` | Replace `_get_annualized_cost()` with `oemof.tools.economics.annuity()`. WACC stays at 0.07. |
+| 2.5.2 | `src/optimization_model.py` | Create Pydantic models for each TOML component config (PVConfig, BESSConfig, CHPConfig, EBoilerConfig, HTHPConfig). Critical fields required; secondary fields keep defaults. Update `load_component_config()` to return validated models. |
+| 2.5.3 | `src/optimization_model.py` | Wire `min_capacity` from `ComponentBounds` into oemof `Investment(minimum=...)` for PV, BESS, HTHP, TES. Defaults remain 0.0. |
+| 2.5.4 | `src/optimization_model.py` | Switch solve method from `po.SolverFactory('appsi_highs')` to `om.solve(solver='highs', solve_kwargs={'tee': True})`. Remove manual dual/rc hacks. Use `solph.processing.meta_results(om)` for objective. If significantly slower, fall back to `appsi_highs`. |
+| 2.5.5 | `src/utils.py` | Add `plot_energy_system_graph(energy_system)` utility using networkx. Add `create_optimization_summary_table(solution_meta)` returning formatted pandas DataFrame. |
+| 2.5.6 | `challenge.ipynb` (via `scripts/build_notebook.py`) | Add config schema docs markdown cell, graph visualization cells (both modes), and summary table cells after each solve. |
+
 ### Phase 3: Notebook Update [STATUS: TODO]
 
 | Task | File(s) | Description |
@@ -318,8 +331,9 @@ Tasks MUST be executed in this order (matching the TODO list in notes.md):
 
 1. **Phase 1** -- Skills update (Tasks 1.1-1.4)
 2. **Phase 2** -- Optimization model update (Tasks 2.1-2.7)
-3. **Phase 3** -- Notebook update (Tasks 3.1-3.5)
-4. **Phase 4** -- Reference mining (Task 4.1)
-5. **Phase 5** -- Documentation and polish (Tasks 5.1-5.4)
+3. **Phase 2.5** -- Model convention alignment (Tasks 2.5.1-2.5.6)
+4. **Phase 3** -- Notebook update (Tasks 3.1-3.5)
+5. **Phase 4** -- Reference mining (Task 4.1)
+6. **Phase 5** -- Documentation and polish (Tasks 5.1-5.4)
 
 > **Rule: Do not start a later phase until all tasks in the current phase pass verification.**

@@ -155,3 +155,124 @@ Total annual cost = 280 * 450,000 = 126,000,000 Euro / year electricity cost
 - Skills update
 - Optimization model opdate
 - Jupiter notebook update
+
+### Notes
+1. create a utils.py for any printing and plotting visualization abstraction
+2. Create a solid outline of how the jupiternotebook should look like step by step, section by section
+3. Make sure that the Jupyternotebook already integrates the latest data and components implemented in phase 2 
+4. Make sure and confirm that my assumption has a referencing backing: Yearly production qtty, elec and therm consump. qtty.
+5. Use mermaid to show how I approach this challenge step by step and attach it in README.md 
+
+
+What I want for challenge.ipynb:
+- I want to create a utils.py in /src for any printing and plotting visualization abstraction so that in the challenge.ipynb, there is no more messy syntaxes for visualization
+- I like the first intro executive summary already
+- First code section should be just importing all the necessary libraries, APIs, classes as it already is right now. Move the visualization style parameters to utils.py and verify solver installation part to optimization_mode.py
+- I like the fermi estimate calculation part. I want the german-energy-market-specialist agent to check if the number makes sense based on the resources online. Is 139 M euro per year for 450,000 ton products logical?
+- I want to use pydantic features so that if type of object is fixed with it and any missmatch will be automatically fixed
+- With the current system definition, does it make sense to split the heat levels into two? since the component of the Henkel factory is not explicitly modelled, what is the use for splitting the heat levels? I would not be able to do some heat recovery modelling, right?
+- I want the user config section code to look like below: 
+project_name = current_facility_optimization #with pydantic this will be turned into string right? #the project name will be used as the name of the energy system of oemof.solph
+optimization_mode = #operation_hub or decision_hub
+start_time = #DD/MM/YYYY format
+end_time = #DD/MM/YYYY format
+
+The sizing config below is then saved to a specific energy system definition that is represent by project_name
+fixed_components_sizing = #Dictionary
+{"pv": XX, #kW
+"bess": XX, #kWh
+"hthp": XX, #kW_th
+"tes": XX #kWh_th}
+
+variable_components_sizing = #Dictionary
+{"pv": true or false, min= , max=      #kW
+"bess": true or false, min= , max=     #kWh
+"hthp": true or false, min= , max=     #kW_th
+"tes": true or false, min= , max=      #kWh_t }
+
+This user config will be placed once before the operation hub solution and the optimization hub solution
+
+- In the analysis of operation hub solution, I would like to brainstorm with .agent/skills/solution-architect-career-coach.md and .agent/skills/milp-optimization-engineer.md agent skills, what is best to show in comparison to the estimated baseline of full elec and gas grid reliance. What I have in mind currently is the following:
+   - Four subplots of 1 week representative operation in different months or season of how the operation_hub optimizes operation dispatch by ramping up consumption when the price is negative #This should be ones of the function defined in utils.py that can easily be used
+   - Bar chart showing the baseline energy cost per ton and the new energy cost per ton #plotting function should also be defined in utils.py
+
+- In the analysis of decision hub solution, I would like to brainstorm with .agent/skills/solution-architect-career-coach.md and .agent/skills/milp-optimization-engineer.md agent skills, what is best to show in comparison to the estimated baseline and operation hub solution:
+   - Tables that summarizes the oemof.solph objective translated into meaningful metrics: #table creation should also be abstracted in utils.py
+      - Table 1 economics metrics: CAPEX, OPEX, NPV, CO2 emission reduced (based on the reduced grid consumption), IRR, Payback Period, resulting energy cost per ton product
+      - Table 2 sizing results : all the component result sizing
+   - Bar chart showing the baseline, operation hub, and decision hub energy cost per ton  #plotting function should also be defined in utils.py
+
+
+
+### Notes 5 August
+
+- Explain why this approach is chosen and why this extent of abstraction (why not more or less)
+- Elaborate the process of tackling this challenge (mermaid diagram w/ extra brief note the importance of each step according to my perspective) ->in README.md
+1. Business analysis and data collection
+To get a sense of the line of business, energy consumption, & magnitude
+2. Idea brainstorming and Goals elaboration 
+To land on an impactful solution with clear goal with current estimation
+3. Spec engineering and system abstraction creation
+Spec engineering for Spec-driven Development was done to set a ground truth when working with agentic AI to set a clear foundation of what tools to be used and to what end. The abstraction creation is system design thinking to ensure clean architechture best practice while avoiding too much abstraction for this specific challenge purpose.
+4. Setting up skills, rules, and loops for agentic AI
+To add an extra layer of capabilities to the AI to based its reasoning on clear resources specifically for different technical purposes and to validat and correct when I make a mistake: Energy market specialist, MILP specialist, Thernomdynamics specialist, Python best practice, etc
+5. Implementation, Review, Iteration
+For every details written in the spec sheet, multiple phases each with predefined tasks are generated. It is important to review, fix, and iterate for each of the phase in order to make sure goal is met and codebase remain managable
+6. Final Validation
+Final testing of logical accuracy, reasoning, and deliveries of the challenge deliverables
+
+Notes challenge.ipynb: 
+- For the operation hub, the set fixed_components_sizing CAPEX should not be accounted into the total cost since it is an existing sizing component
+- plot_seasonal_dispatch_subplots() got an unexpected keyword argument 'df_op_flows_full' I got this error because I ran the optimization only for 1 week. I guess this function should be modular or flexible such that it plots just for the entirety of the start_time and end_time as an interactive plot where user can zoom in and zoom out, activate or deactivate a plot or legend,
+- The optimization ran 23.9 seconds for a 1 week operationhub optimization which is too long condidering the short timestep windonw. Brainstorm with the MILP agent what we can do to improve the computation time? Is there modelling fixed that can make computation time more efficient or is there other computational overhead that is a bottleneck?
+- The timestep of the solve should be based on the config start_time and end_time, basically counting how many hours in between the two calendar
+
+Notes 6 August:
+- I think PV profile is still bad. Check the profile creation function again. 
+- Implement the changes in readme and challenge.ipynb
+- Make sure the investment and operation mode point to the same definition of the model
+- If the change to oemof convention solph results in a way longer computational time, fallback to the appsihighs approach
+- Update the status of SPEC.md at the end to become 'done'
+- Baseline calculation should be done in python code with a high level explanation in the markdown cell above it. 
+
+
+- For each of the config being initialized as an es = solph.EnergySystem(timeindex=timeindex, infer_last_interval=False) (op_config or inv_config), the es object should only build the components listed in the fixed_components_sizing: Any = ...,variable_components_sizing: Any = ..., and also only build buses that are attached to them, the other components or buses that are not mentioned or attached, don't include, except grid!
+- Use import oemof_visio as vis in replacement to  import networkx as nx in the existing plot_energy_system_graph
+from oemof.solph import Results
+Get results from your solved model
+results = Results(model)
+Extract flows connected to a specific bus (e.g., electricity bus)
+electricity_bus_results = results.get((bel, None))
+Create I/O balance plots using oemof-visio helpers
+my_plot = vis.Plot(electricity_bus_results)
+my_plot.draw()
+- eta_op = hes_op.solve(timesteps=168), why is the timesteps here still elaborated as integer? I thought it is already the number of hours in between end_time and start_time in the config? 
+- What if I want to add another pv on top of an existing pv? is there a way to do this efficiently and best practice? if possible I would want to add a the existing pv as fixed and also simulate adding more pv as the variable component sizing. The same applies to other components. 
+
+
+
+Some changes and updates that I want to plan (DONE):
+   - ep_cost calculation change from  def _get_annualized_cost(self, capex_per_unit: float, lifetime_years: int) -> float: to the built in oemof.solph one. Make sure to use the config file for the inputs of the function. 
+capex = 1000  # investment cost
+lifetime = 20  # life expectancy
+wacc = 0.05  # weighted average of capital cost
+epc = capex * (wacc * (1 + wacc) ** lifetime) / ((1 + wacc) ** lifetime - 1)
+from oemof.tools import economics
+epc = economics.annuity(1000, 20, 0.05)
+   - The minimum should be defined and retrieved from the config, same for other components. I dont see the minimum_capacity being used in the VariableSizingConfig(BaseModel) yet in the challenge.ipynb. I also want to write a clear documentation on how to set up the config in the challenge.ipynb
+   - Use the oemof.solph convention to solving an energysystem
+   om = solph.Model(my_energysystem)
+results = om.solve(solver="cbc", solve_kwargs={"tee": True}) #instead of cbc, use Highs by import highspy at the top of optimization_mode.py
+   - Add one cell before the solving part of both operation and investment of plotting the energy system like below in the challenge.ipynb
+   # %%[graph_plotting]
+plt.figure()
+graph = energy_system.to_networkx()
+nx.draw(graph, with_labels=True, font_size=8)
+
+   - Can I use this to get the results overview
+   tce = results["objective"]? is this a built in oemof.solph tool? can I use it to show the summary of the optimization results in y challenge.ipynb?
+   - For all the get functions to retrieve data from either config or result, instead of falling back to default value if problem occurs, raise an error instead with a warning so that user knows what is wrong and don't get a fake result. 
+
+Future update:
+1. Make grid also configurable
+2. Create different classes in different modules for each component. Make the build function modular

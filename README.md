@@ -80,7 +80,7 @@ uv run python -m src.optimization_model
 
 ---
 
-## 🤝 Strategic On-Site Protocol for Henkel Düsseldorf
+## 🤝 Strategic On-Site Protocol for Henkel Düsseldorf TODO: This should be moved to the last section in challenge.ipynb I think
 
 ### 1. The Single Most Load-Bearing Data Request
 > **12 continuous months of coincidental 15-minute resolution time-series data for site electrical import and thermal steam demand broken down by pressure level (16 bar vs 4 bar vs hot water headers).**
@@ -105,3 +105,8 @@ Per challenge requirement:
 - **Solar Simulation & Weather:** `pvlib` + Open-Meteo Historical Weather API.
 - **Market Datasets:** SMARD (Bundesnetzagentur German Wholesale Electricity) & THE (Trading Hub Europe gas proxy).
 - **Environment Management:** `uv` (v0.11.9).
+
+# What I want to add:
+## Why I used this approach to tackle the challenge and why abstraction to this extent, not more not less
+## Mermaid diagram of the process of tackling this challenge
+## 

@@ -38,7 +38,7 @@ trigger: always_on
 * **Self-Explaining Code:** Include concise inline comments for core logic, state updates, and complex algorithms so the user retains complete comprehension of the codebase.
 
 ### Rule 6: Progress Update
-* When you have finished a task, create a .md file that summarizes what you have done so that every agent working in the repo understand the status of the repo.
+* When you have finished a task, create a .md file that summarizes what you have done so that every agent working in the repo /docs folder in order for me to understand the status of the repo. Follow the convention of the existing progress report in the folder.
 ---
 
 ## 📋 MANDATORY RESPONSE FORMAT FOR ALL TASKS
