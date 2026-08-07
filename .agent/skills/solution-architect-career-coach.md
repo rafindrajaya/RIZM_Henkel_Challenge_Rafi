@@ -16,15 +16,15 @@ When facing a new challenge, follow this sequence strictly:
    - Data constraints (what we know publicly vs what we'd need from Henkel)
    - Economic constraints (CAPEX budgets, payback requirements, commodity prices)
 
-3. **Build the baseline before the solution.** A Fermi estimate of the current state (EUR/ton) must come before any optimization result. The reader needs a number to compare against. State every input, show the arithmetic, and explain why each number was chosen over alternatives.
+3. **Rank use cases by impact, not by complexity.** For each candidate use case, estimate the EUR/ton delta it could deliver. Cut anything below a materiality threshold. Explain why you cut it.
 
-4. **Rank use cases by impact, not by complexity.** For each candidate use case, estimate the EUR/ton delta it could deliver. Cut anything below a materiality threshold. Explain why you cut it.
-
-5. **Show the reasoning chain, not just the answer.** For every assumption:
+4. **Show the reasoning chain, not just the answer.** For every assumption:
    - State the assumption explicitly
    - State where the number comes from (report, calculation, benchmark)
    - State what alternative you considered and why you rejected it
    - State what would change if the assumption were wrong (sensitivity)
+
+5. Make sure delivered reasoning output is concise, defensible, and impactful.
 
 ## Deliverable Standards for RIZM
 

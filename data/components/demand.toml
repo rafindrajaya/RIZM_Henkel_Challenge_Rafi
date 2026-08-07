@@ -1,0 +1,7 @@
+# Industrial Baseload Demand Configuration
+# Site demand sinks for electricity, high-temperature steam, and process heat
+
+[demand]
+elec_demand_mw = 60.0
+steam_demand_mw_th = 160.0
+heat_demand_mw_th = 60.0

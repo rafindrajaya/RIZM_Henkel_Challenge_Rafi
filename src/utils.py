@@ -273,9 +273,48 @@ def create_pypsa_asset_sizing_table(results_or_net: Any) -> pd.DataFrame:
     return pd.DataFrame(asset_rows)
 
 
-def explore_network_interactive(results_or_net: Any):
-    """Generates an interactive Folium web map of the PyPSA topology pre- or post-solve using n.explore()."""
+def explore_network_interactive(results_or_net: Any, active_only: bool = True):
+    """
+    Generates an interactive Folium web map of the PyPSA topology pre- or post-solve using n.explore().
+    
+    Parameters
+    ----------
+    results_or_net : Any
+        PyPSA network instance or dictionary containing 'network'.
+    active_only : bool, default True
+        If True and the network is solved, extendable components with zero optimal built capacity
+        (p_nom_opt <= 1e-3 or e_nom_opt <= 1e-3) will be excluded from the interactive map display.
+    """
     n = results_or_net.get("network", results_or_net) if isinstance(results_or_net, dict) else getattr(results_or_net, "network", results_or_net)
+
+    # Make a copy if active_only filtering is requested to avoid mutating the original network
+    if active_only:
+        n_disp = n.copy()
+        # Remove extendable generators with zero capacity built
+        if hasattr(n_disp, "generators") and "p_nom_opt" in n_disp.generators.columns:
+            unbuilt_gens = n_disp.generators[
+                (n_disp.generators.get("p_nom_extendable", False)) & (n_disp.generators.p_nom_opt <= 1e-3)
+            ].index
+            for g in list(unbuilt_gens):
+                n_disp.remove("Generator", g)
+
+        # Remove extendable links with zero capacity built
+        if hasattr(n_disp, "links") and "p_nom_opt" in n_disp.links.columns:
+            unbuilt_links = n_disp.links[
+                (n_disp.links.get("p_nom_extendable", False)) & (n_disp.links.p_nom_opt <= 1e-3)
+            ].index
+            for l in list(unbuilt_links):
+                n_disp.remove("Link", l)
+
+        # Remove extendable stores with zero capacity built
+        if hasattr(n_disp, "stores") and "e_nom_opt" in n_disp.stores.columns:
+            unbuilt_stores = n_disp.stores[
+                (n_disp.stores.get("e_nom_extendable", False)) & (n_disp.stores.e_nom_opt <= 1e-3)
+            ].index
+            for s in list(unbuilt_stores):
+                n_disp.remove("Store", s)
+    else:
+        n_disp = n
 
     # Ensure buses have default coordinates if unassigned
     default_coords = {
@@ -287,12 +326,250 @@ def explore_network_interactive(results_or_net: Any):
         "tes_bus": (6.8355, 51.1710),
     }
     for bus_name, (x, y) in default_coords.items():
-        if bus_name in n.buses.index:
-            if pd.isna(n.buses.loc[bus_name, "x"]) or n.buses.loc[bus_name, "x"] == 0:
-                n.buses.loc[bus_name, "x"] = x
-            if pd.isna(n.buses.loc[bus_name, "y"]) or n.buses.loc[bus_name, "y"] == 0:
-                n.buses.loc[bus_name, "y"] = y
+        if bus_name in n_disp.buses.index:
+            if pd.isna(n_disp.buses.loc[bus_name, "x"]) or n_disp.buses.loc[bus_name, "x"] == 0:
+                n_disp.buses.loc[bus_name, "x"] = x
+            if pd.isna(n_disp.buses.loc[bus_name, "y"]) or n_disp.buses.loc[bus_name, "y"] == 0:
+                n_disp.buses.loc[bus_name, "y"] = y
 
-    return n.explore()
+    return n_disp.explore()
 
+
+def plot_network_topology_static(
+    results_or_net: Any, title: str = "Henkel Holthausen PyPSA Topology Diagram"
+) -> plt.Figure:
+    """
+    Generates a clean 2D static schematic diagram of the PyPSA topology using native n.plot().
+
+    Parameters
+    ----------
+    results_or_net : Any
+        PyPSA network instance or dictionary containing 'network'.
+    title : str
+        Title for the plot figure.
+    """
+    n = results_or_net.get("network", results_or_net) if isinstance(results_or_net, dict) else getattr(results_or_net, "network", results_or_net)
+
+    # Assign diagram layout coordinates (x, y) to site buses if unassigned
+    coords = {
+        "b_elec": (0.0, 2.0),
+        "b_gas": (-2.0, 2.0),
+        "b_steam_ht": (0.0, 0.0),
+        "b_heat_lt": (0.0, -2.0),
+        "bess_bus": (2.0, 2.0),
+        "tes_bus": (2.0, -2.0),
+    }
+    for bus, (x, y) in coords.items():
+        if bus in n.buses.index:
+            n.buses.loc[bus, "x"] = x
+            n.buses.loc[bus, "y"] = y
+
+    fig, ax = plt.subplots(figsize=(9, 6))
+    n.plot(
+        ax=ax,
+        bus_colors={
+            "b_elec": "#3182bd",
+            "b_gas": "#6baed6",
+            "b_steam_ht": "#d62728",
+            "b_heat_lt": "#2ca02c",
+            "bess_bus": "#9ecae1",
+            "tes_bus": "#a1d99b",
+        },
+        bus_sizes=0.04,
+        link_widths=2.5,
+        line_widths=2.5,
+        title=title,
+    )
+    plt.tight_layout()
+    return fig
+
+
+def plot_network_topology_graph(
+    results_or_net: Any, title: str = "Henkel Holthausen PyPSA Topology NetworkX Graph"
+) -> plt.Figure:
+    """
+    Generates a static NetworkX directed graph representation using PyPSA's native n.graph().
+
+    Parameters
+    ----------
+    results_or_net : Any
+        PyPSA network instance or dictionary containing 'network'.
+    title : str
+        Title for the plot figure.
+    """
+    import networkx as nx
+
+    n = results_or_net.get("network", results_or_net) if isinstance(results_or_net, dict) else getattr(results_or_net, "network", results_or_net)
+
+    G = n.graph()
+    fig, ax = plt.subplots(figsize=(9, 6))
+    pos = nx.spring_layout(G, seed=42)
+
+    nx.draw_networkx(
+        G,
+        pos,
+        ax=ax,
+        with_labels=True,
+        node_color="#3182bd",
+        node_size=2500,
+        font_color="white",
+        font_size=10,
+        font_weight="bold",
+        edge_color="gray",
+        arrows=True,
+        arrowsize=20,
+    )
+
+    ax.set_title(title, fontsize=12, fontweight="bold")
+    ax.axis("off")
+    plt.tight_layout()
+    return fig
+
+
+def plot_network_schematic(
+    results_or_net: Any, title: str = "Henkel Holthausen Energy System Schematic Diagram"
+) -> plt.Figure:
+    """
+    Renders an explicit block diagram schematic showing Buses, Energy Conversion Assets
+    (CHP, Gas Boiler, E-Boiler, HTHP), Supply Generators (Grid, Solar), and Demand Sinks.
+    Only active components (with capacity > 0) are rendered. Dynamic sizing labels are extracted directly from PyPSA.
+
+    Parameters
+    ----------
+    results_or_net : Any
+        PyPSA network instance or dictionary containing 'network'.
+    title : str
+        Title for the plot figure.
+    """
+    n = results_or_net.get("network", results_or_net) if isinstance(results_or_net, dict) else getattr(results_or_net, "network", results_or_net)
+
+    fig, ax = plt.subplots(figsize=(12, 7))
+
+    # Helper function to check component capacity from PyPSA network
+    def get_component_capacity(comp_type: str, name: str) -> float:
+        df = getattr(n, comp_type, pd.DataFrame())
+        if df.empty or name not in df.index:
+            return 0.0
+        row = df.loc[name]
+
+        is_ext = bool(row.get("p_nom_extendable", False)) if comp_type != "stores" else bool(row.get("e_nom_extendable", False))
+
+        if is_ext:
+            opt_col = "e_nom_opt" if comp_type == "stores" else "p_nom_opt"
+            if opt_col in row.index and not pd.isna(row[opt_col]) and float(row[opt_col]) > 1e-3:
+                return float(row[opt_col])
+
+        # Fallback to fixed p_nom / e_nom
+        nom_col = "e_nom" if comp_type == "stores" else "p_nom"
+        val = row.get(nom_col, 0.0)
+        return float(val) if not pd.isna(val) else 0.0
+
+    # Layout node templates
+    nodes = {
+        # Supply Generators
+        "grid_gas": {"pos": (1, 8), "color": "#6baed6", "label": "Grid Gas\n(Import)"},
+        "grid_electricity": {"pos": (1, 5), "color": "#3182bd", "label": "Grid Power\n(Import)"},
+        "solar_pv": {"pos": (1, 2), "color": "#fec44f", "type": "generators", "prefix": "Solar PV"},
+
+        # Central Energy Buses
+        "b_gas": {"pos": (4, 8), "color": "#6baed6", "label": "Gas Bus\n[b_gas]", "is_bus": True},
+        "b_elec": {"pos": (4, 5), "color": "#3182bd", "label": "Electricity Bus\n[b_elec]", "is_bus": True},
+        "b_steam_ht": {"pos": (7, 6.5), "color": "#d62728", "label": "Steam Bus (16 bar)\n[b_steam_ht]", "is_bus": True},
+        "b_heat_lt": {"pos": (7, 2.5), "color": "#2ca02c", "label": "Heat Bus (~80°C)\n[b_heat_lt]", "is_bus": True},
+
+        # Conversion Assets / Links
+        "gas_chp": {"pos": (5.5, 7.5), "color": "#e6550d", "type": "links", "custom_chp": True},
+        "gas_boiler": {"pos": (5.5, 8.8), "color": "#fd8d3c", "type": "links", "prefix": "Gas Boiler", "unit": "MW_th", "custom_boiler": True},
+        "electric_boiler": {"pos": (5.5, 5), "color": "#74c476", "type": "links", "prefix": "Electric Boiler", "unit": "MW_th"},
+        "heat_pump": {"pos": (5.5, 3.5), "color": "#2ca02c", "type": "links", "prefix": "HTHP Heat Pump", "unit": "MW_th"},
+        "steam_to_heat_exchanger": {"pos": (7, 4.5), "color": "#98df8a", "type": "links", "label": "Steam Exchanger\n(95% Eff)"},
+
+        # Storage & Demand Sinks
+        "bess_store": {"pos": (4, 3.5), "color": "#9ecae1", "type": "stores", "prefix": "BESS Storage", "unit": "MWh"},
+        "tes_store": {"pos": (7, 1), "color": "#a1d99b", "type": "stores", "prefix": "TES Storage", "unit": "MWh_th"},
+        "demand_elec": {"pos": (10, 5), "color": "#1f77b4", "label": "Elec Demand\n(60 MW_el)"},
+        "demand_steam": {"pos": (10, 6.5), "color": "#d62728", "label": "Steam Demand\n(160 MW_th)"},
+        "demand_heat": {"pos": (10, 2.5), "color": "#2ca02c", "label": "Heat Demand\n(60 MW_th)"},
+    }
+
+    # Filter active components present in network with capacity > 0
+    active_nodes = {}
+    for name, info in nodes.items():
+        if info.get("is_bus", False):
+            if name in n.buses.index:
+                active_nodes[name] = info
+        elif name in ["grid_gas", "grid_electricity", "demand_elec", "demand_steam", "demand_heat"]:
+            if name in n.generators.index or name in n.loads.index:
+                active_nodes[name] = info
+        elif "type" in info:
+            cap = get_component_capacity(info["type"], name)
+            if cap > 1e-3:
+                row = n.links.loc[name] if info["type"] == "links" else n.generators.loc[name] if info["type"] == "generators" else n.stores.loc[name]
+                # Format label dynamically with exact PyPSA capacity
+                if info.get("custom_chp", False):
+                    eta_el = float(row.get("efficiency", 0.25))
+                    eta_th = float(row.get("efficiency2", 0.50))
+                    chp_el = cap * eta_el
+                    chp_th = cap * eta_th
+                    info["label"] = f"Gas CHP\n({chp_el/1000:.1f} MW_el / {chp_th/1000:.1f} MW_th)"
+                elif info.get("custom_boiler", False):
+                    eta_th = float(row.get("efficiency", 0.90))
+                    boiler_th = cap * eta_th
+                    info["label"] = f"Gas Boiler\n({boiler_th/1000:.2f} MW_th)"
+                elif "prefix" in info:
+                    unit = info.get("unit", "MW")
+                    info["label"] = f"{info['prefix']}\n({cap/1000:.2f} {unit})"
+                active_nodes[name] = info
+
+    # Draw boxes for active nodes
+    for name, info in active_nodes.items():
+        x, y = info["pos"]
+        is_bus = info.get("is_bus", False)
+        box_style = "round,pad=0.3" if not is_bus else "square,pad=0.2"
+
+        ax.text(
+            x, y, info["label"],
+            ha="center", va="center",
+            fontsize=8.5, fontweight="bold", color="white" if is_bus else "black",
+            bbox=dict(boxstyle=box_style, facecolor=info["color"], edgecolor="black", alpha=0.9, lw=1.5)
+        )
+
+    # Connections / Flow Arrows
+    connections = [
+        ("grid_gas", "b_gas"),
+        ("grid_electricity", "b_elec"),
+        ("solar_pv", "b_elec"),
+        ("b_gas", "gas_chp"),
+        ("b_gas", "gas_boiler"),
+        ("gas_chp", "b_steam_ht"),
+        ("gas_chp", "b_elec"),
+        ("gas_boiler", "b_steam_ht"),
+        ("b_elec", "electric_boiler"),
+        ("electric_boiler", "b_steam_ht"),
+        ("b_elec", "heat_pump"),
+        ("heat_pump", "b_heat_lt"),
+        ("b_steam_ht", "steam_to_heat_exchanger"),
+        ("steam_to_heat_exchanger", "b_heat_lt"),
+        ("b_elec", "demand_elec"),
+        ("b_steam_ht", "demand_steam"),
+        ("b_heat_lt", "demand_heat"),
+        ("b_elec", "bess_store"),
+        ("b_heat_lt", "tes_store"),
+    ]
+
+    for src, dst in connections:
+        if src in active_nodes and dst in active_nodes:
+            x1, y1 = active_nodes[src]["pos"]
+            x2, y2 = active_nodes[dst]["pos"]
+            ax.annotate(
+                "", xy=(x2, y2), xytext=(x1, y1),
+                arrowprops=dict(arrowstyle="-|>", color="gray", lw=1.8, mutation_scale=15),
+            )
+
+    ax.set_xlim(-0.5, 11.5)
+    ax.set_ylim(-0.5, 10.0)
+    ax.set_title(title, fontsize=12, fontweight="bold")
+    ax.axis("off")
+    plt.tight_layout()
+    return fig
 

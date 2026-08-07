@@ -73,7 +73,7 @@ GRID_ELEC_EMISSION_FACTOR_T_PER_MWH = 0.38
 # CONFIGURATION SCHEMAS (Pydantic Models)
 # -----------------------------------------------------------------------------
 class FixedSizingConfig(BaseModel):
-    """Configuration for fixed existing/installed asset capacities (kW or kWh)."""
+    """Configuration for fixed existing/installed asset capacities (kW or kWh) and demand overrides."""
     pv: float = Field(default=0.0, ge=0.0, description="Rooftop PV installed capacity in kWp")
     pv_ppa: float = Field(default=0.0, ge=0.0, description="PV PPA contract capacity in kW")
     wind_ppa: float = Field(default=0.0, ge=0.0, description="Wind PPA contract capacity in kW")
@@ -84,6 +84,10 @@ class FixedSizingConfig(BaseModel):
     chp_th: float = Field(default=30000.0, ge=0.0, description="Existing CHP thermal capacity in kW")
     gas_boiler: float = Field(default=180000.0, ge=0.0, description="Existing Gas Boiler thermal capacity in kW")
     eboiler: float = Field(default=25000.0, ge=0.0, description="Existing Electric Boiler thermal capacity in kW")
+    demand_elec_mw: Optional[float] = Field(default=None, ge=0.0, description="Electrical continuous baseload demand override in MW")
+    demand_steam_mw_th: Optional[float] = Field(default=None, ge=0.0, description="High-temp steam demand override in MW_th")
+    demand_heat_mw_th: Optional[float] = Field(default=None, ge=0.0, description="Mid-temp process heat demand override in MW_th")
+
 
 
 class ComponentBounds(BaseModel):
@@ -134,6 +138,8 @@ class ComponentConfigs(BaseModel):
     eboiler: EBoilerConfig
     hthp: HTHPComponentConfig
     tes: TESComponentConfig = Field(default_factory=TESComponentConfig)
+    demand: DemandConfig = Field(default_factory=DemandConfig)
+
 
 
 def parse_config_date(date_str: str) -> pd.Timestamp:
@@ -184,6 +190,11 @@ def load_component_config(components_dir: Path = DEFAULT_COMPONENTS_DIR) -> Comp
         validated["tes"] = TESComponentConfig(**raw_configs["tes"])
     else:
         validated["tes"] = TESComponentConfig()
+
+    if "demand" in raw_configs:
+        validated["demand"] = DemandConfig(**raw_configs["demand"])
+    else:
+        validated["demand"] = DemandConfig()
 
     return ComponentConfigs(**validated)
 
@@ -336,9 +347,17 @@ class HenkelEnergySystem:
         grid_gas = GridGasComponent(price_series=pd.Series(gas_cost_eur_kwh, index=df_m.index))
         grid_gas.build_component(n, wacc=self.wacc)
 
-        # 2. Demand Sinks (60 MW elec, 160 MW_th steam, 60 MW_th heat)
-        demand = DemandComponent(DemandConfig())
-        demand.build_component(n, wacc=self.wacc)
+        # 2. Demand Sinks (configurable via demand.toml and FixedSizingConfig)
+        demand_cfg = self.comp_cfg.demand.model_copy()
+        if self.config.fixed_components_sizing.demand_elec_mw is not None:
+            demand_cfg.elec_demand_mw = self.config.fixed_components_sizing.demand_elec_mw
+        if self.config.fixed_components_sizing.demand_steam_mw_th is not None:
+            demand_cfg.steam_demand_mw_th = self.config.fixed_components_sizing.demand_steam_mw_th
+        if self.config.fixed_components_sizing.demand_heat_mw_th is not None:
+            demand_cfg.heat_demand_mw_th = self.config.fixed_components_sizing.demand_heat_mw_th
+
+        demand = DemandComponent(demand_cfg)
+        demand.build_component(n)
 
         # Emergency Zero-Cost Thermal Heat Dump Generators (absorbs excess heat at EUR 0.0 marginal cost)
         n.add(

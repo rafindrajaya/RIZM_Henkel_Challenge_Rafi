@@ -15,9 +15,10 @@
 - Validate the data/components with .agent/skills/pypsa-asset-economics (DONE)
 - Create PV PPA and Wind PPA classes in grid.py module, profile generators in external_api.py, and integrate with Pydantic configs in optimization_model.py (DONE)
 - Is there a way to visualize the topology with PyPSA built in tools?
+- The n.explore visualization for investment hub should be after solve because this is when all the final components are instatiated
 
 ## TODO 2:
-- The n.explore visualization for investment hub should be after solve because this is when all the final components are instatiated
+
 - Remove the fermi baseline calculation and just compare operation hub with existing compoenents and decision hub that includes the option of investing in battery, PPA PV, PPA Wind, TES
 
 
