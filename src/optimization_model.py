@@ -35,6 +35,7 @@ from src.components import (
     GridGasComponent,
     PVComponent,
     PVComponentConfig,
+    compute_pv_normalized_yield,
     GasCHPComponent,
     CHPComponentConfig,
     GasBoilerComponent,
@@ -124,45 +125,6 @@ class ComponentConfigs(BaseModel):
     hthp: HTHPComponentConfig
     tes: TESComponentConfig = Field(default_factory=TESComponentConfig)
 
-
-def compute_pv_normalized_yield(
-    df_solar: pd.DataFrame,
-    lat: float = 51.1783,
-    lon: float = 6.8445,
-    tilt: float = 38.0,
-    azimuth: float = 180.0,
-) -> np.ndarray:
-    """Computes or retrieves normalized PV generation profile (0..1+ AC kW per kWp installed)."""
-    if "pv_normalized_yield" in df_solar.columns:
-        return np.clip(np.asarray(df_solar["pv_normalized_yield"], dtype=float), 0.0, 1.2)
-
-    try:
-        import pvlib
-        times = df_solar.index
-        solpos = pvlib.solarposition.get_solarposition(times, lat, lon)
-        dni_extra = pvlib.irradiance.get_extra_radiation(times)
-        total_irrad = pvlib.irradiance.get_total_irradiance(
-            surface_tilt=tilt,
-            surface_azimuth=azimuth,
-            solar_zenith=solpos["apparent_zenith"],
-            solar_azimuth=solpos["azimuth"],
-            dni=df_solar["dni"],
-            ghi=df_solar["ghi"],
-            dhi=df_solar["dhi"],
-            dni_extra=dni_extra,
-            model="haydavies",
-        )
-        poa_global = total_irrad["poa_global"].fillna(0.0)
-        temp_air = df_solar["temp_air"] if "temp_air" in df_solar.columns else 15.0
-        cell_temp = pvlib.temperature.faiman(poa_global, temp_air)
-        dc_power = pvlib.pvsystem.pvwatts_dc(poa_global, cell_temp, pdc0=1.0, gamma_pdc=-0.004)
-        return np.clip(np.asarray(dc_power, dtype=float), 0.0, 1.2)
-    except (ImportError, KeyError, ValueError, AttributeError) as err:
-        logger.warning(
-            "pvlib simulation calculation failed (%s). Falling back to GHI irradiance model.", err
-        )
-        ghi = np.asarray(df_solar["ghi"], dtype=float) / 1000.0
-        return np.clip(ghi, 0.0, 1.0)
 
 
 def parse_config_date(date_str: str) -> pd.Timestamp:
@@ -377,8 +339,7 @@ class HenkelEnergySystem:
             marginal_cost=0.0,
         )
 
-        # 3. Solar PV Generator
-        pv_yield = pd.Series(compute_pv_normalized_yield(df_s), index=df_s.index)
+        # 3. Solar PV Generator (PVComponent computes its profile directly from df_solar)
         is_pv_ext = (self.mode == "investment") and self.config.variable_components_sizing.pv.enabled
         pv_cfg = PVComponentConfig(
             installed_capacity_kw=self.pv_capacity_kwp,
@@ -388,7 +349,7 @@ class HenkelEnergySystem:
             opex_eur_per_kw_year=self.comp_cfg.pv.opex_eur_per_kw_year,
             lifetime_years=self.comp_cfg.pv.lifetime_years,
         )
-        pv_comp = PVComponent(pv_profile=pv_yield, config=pv_cfg)
+        pv_comp = PVComponent(config=pv_cfg, df_solar=df_s)
         pv_comp.build_component(n, wacc=self.wacc)
 
         # 4. CHP Unit (Gas -> Elec + Steam_HT)

@@ -12,7 +12,9 @@
 ## TODO 2:
 - Move the pvlib pv yield function to pvcomponent class for better visibility and code structure
 - Validate the data/components with .agent/skills/pypsa-asset-economics
-- Is there a way to visualize the topology 
+- Is there a way to visualize the topology with PyPSA built in tools?
+- Create a PV PPA and WT PPA classes components in grid.py module and import available 2025 power profile and cost of this PPA example
+- Create a CI test that checks whether both the operation hub and decision hub framework can converge optimally under different sizing configuration for a 1 week operation and that the result is not multiple magnitude off from the range of possible results
 
 
 ## challenge.ipynb structure change (challenge.ipynb)

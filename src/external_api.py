@@ -188,48 +188,7 @@ def generate_benchmark_market_data(year: int = 2025) -> pd.DataFrame:
     return df
 
 
-def compute_optimal_pv_yield(
-    df_solar: pd.DataFrame,
-    lat: float = DUESSELDORF_LAT,
-    lon: float = DUESSELDORF_LON,
-    tilt: float = 38.0,
-    azimuth: float = 180.0,
-) -> np.ndarray:
-    """
-    Computes optimal normalized PV generation profile (AC kW per kWp installed) for Düsseldorf coordinates
-    using pvlib physical solar position, Hay-Davies irradiance transposition, Faiman cell temperature,
-    and PVWatts DC/AC system modeling with thermal losses.
-    """
-    if "pv_normalized_yield" in df_solar.columns:
-        return np.clip(np.asarray(df_solar["pv_normalized_yield"], dtype=float), 0.0, 1.2)
-
-    try:
-        import pvlib
-
-        times = df_solar.index
-        solpos = pvlib.solarposition.get_solarposition(times, lat, lon)
-        dni_extra = pvlib.irradiance.get_extra_radiation(times)
-        total_irrad = pvlib.irradiance.get_total_irradiance(
-            surface_tilt=tilt,
-            surface_azimuth=azimuth,
-            solar_zenith=solpos["apparent_zenith"],
-            solar_azimuth=solpos["azimuth"],
-            dni=df_solar["dni"],
-            ghi=df_solar["ghi"],
-            dhi=df_solar["dhi"],
-            dni_extra=dni_extra,
-            model="haydavies",
-        )
-        poa_global = total_irrad["poa_global"].fillna(0.0)
-        temp_air = df_solar["temp_air"] if "temp_air" in df_solar.columns else 15.0
-        cell_temp = pvlib.temperature.faiman(poa_global, temp_air)
-        dc_power = pvlib.pvsystem.pvwatts_dc(poa_global, cell_temp, pdc0=1.0, gamma_pdc=-0.004)
-        ac_yield = dc_power * 0.96
-        return np.clip(np.asarray(ac_yield, dtype=float), 0.0, 1.2)
-    except Exception as e:
-        print(f"[Warning] pvlib optimal yield computation fallback ({e}). Using GHI proxy.")
-        ghi = np.asarray(df_solar["ghi"], dtype=float) / 1000.0
-        return np.clip(ghi, 0.0, 1.0)
+from src.components import compute_pv_normalized_yield
 
 
 def prepare_data_files(year: int = 2025, force_repopulate: bool = True) -> Tuple[Path, Path]:
@@ -246,9 +205,11 @@ def prepare_data_files(year: int = 2025, force_repopulate: bool = True) -> Tuple
 
     if force_repopulate or not solar_path.exists():
         solar_df = fetch_open_meteo_solar(year=year)
-        solar_df["pv_normalized_yield"] = compute_optimal_pv_yield(
+        solar_df["pv_normalized_yield"] = compute_pv_normalized_yield(
             solar_df, lat=DUESSELDORF_LAT, lon=DUESSELDORF_LON, tilt=38.0, azimuth=180.0
         )
+        solar_df.to_csv(solar_path)
+        print(f"[Info] Saved repopulated solar weather data with cached pv_normalized_yield to {solar_path}")
         solar_df.to_csv(solar_path)
         print(f"[Info] Saved repopulated solar weather data with cached pv_normalized_yield to {solar_path}")
 

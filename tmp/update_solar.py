@@ -7,7 +7,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import pandas as pd
-from src.optimization_model import compute_pv_normalized_yield
+from src.components.pv import compute_pv_normalized_yield
 
 solar_path = PROJECT_ROOT / "data" / "solar_data_duesseldorf_2025.csv"
 df_solar = pd.read_csv(solar_path, index_col=0, parse_dates=True)
