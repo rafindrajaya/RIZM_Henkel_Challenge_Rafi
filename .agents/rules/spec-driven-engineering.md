@@ -39,6 +39,9 @@ trigger: always_on
 
 ### Rule 6: Progress Update
 * When you have finished a task, create a .md file that summarizes what you have done so that every agent working in the repo /docs folder in order for me to understand the status of the repo. Follow the convention of the existing progress report in the folder.
+
+### Rule 7: Confirmation before implimentation 
+* Whenever I prompt a query or task, always confirm your plan and idea of action first before implementation. 
 ---
 
 ## 📋 MANDATORY RESPONSE FORMAT FOR ALL TASKS

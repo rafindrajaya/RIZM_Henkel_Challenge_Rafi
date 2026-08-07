@@ -357,6 +357,26 @@ class HenkelEnergySystem:
         demand = DemandComponent(DemandConfig())
         demand.build_component(n, wacc=self.wacc)
 
+        # Emergency Zero-Cost Thermal Heat Dump Generators (absorbs excess heat at EUR 0.0 marginal cost)
+        n.add(
+            "Generator",
+            "steam_dump",
+            bus="b_steam_ht",
+            p_nom=1e6,
+            p_min_pu=-1.0,
+            p_max_pu=0.0,
+            marginal_cost=0.0,
+        )
+        n.add(
+            "Generator",
+            "heat_dump",
+            bus="b_heat_lt",
+            p_nom=1e6,
+            p_min_pu=-1.0,
+            p_max_pu=0.0,
+            marginal_cost=0.0,
+        )
+
         # 3. Solar PV Generator
         pv_yield = pd.Series(compute_pv_normalized_yield(df_s), index=df_s.index)
         is_pv_ext = (self.mode == "investment") and self.config.variable_components_sizing.pv.enabled
@@ -437,7 +457,7 @@ class HenkelEnergySystem:
             installed_capacity_kwh=self.tes_capacity_kwh_th,
             is_extendable=is_tes_ext,
             max_capacity_kwh=self.config.variable_components_sizing.tes.max_capacity if is_tes_ext else 100000.0,
-            capex_eur_per_kwh=self.comp_cfg.tes.capex_eur_per_kwh_th,
+            capex_eur_per_kwh=self.comp_cfg.tes.capex_eur_per_kwh,
             opex_eur_per_kwh_year=1.0,
             lifetime_years=self.comp_cfg.tes.lifetime_years,
         )
@@ -447,7 +467,7 @@ class HenkelEnergySystem:
         self.network = n
         return n
 
-    def solve(self, solver_name: str = "linopy", timesteps: Optional[int] = None, **kwargs) -> Dict[str, Any]:
+    def solve(self, solver_name: str = "highs", timesteps: Optional[int] = None, **kwargs) -> Dict[str, Any]:
         """Solves the PyPSA energy system optimization problem and synthesizes results."""
         if self.network is None:
             self.build_energy_system(timesteps=timesteps)
@@ -459,22 +479,22 @@ class HenkelEnergySystem:
             if "bess" in net.stores.index and getattr(net.stores.loc["bess"], "e_nom_extendable", False):
                 c_rate = 0.5
                 if "bess_charger" in net.links.index and "bess_discharger" in net.links.index:
-                    net.model.add_constraint(
+                    net.model.add_constraints(
                         net.model["Link-p_nom"].loc["bess_charger"] == net.model["Store-e_nom"].loc["bess"] * c_rate,
                         name="bess_charger_c_rate",
                     )
-                    net.model.add_constraint(
+                    net.model.add_constraints(
                         net.model["Link-p_nom"].loc["bess_discharger"] == net.model["Store-e_nom"].loc["bess"] * c_rate,
                         name="bess_discharger_c_rate",
                     )
             if "tes" in net.stores.index and getattr(net.stores.loc["tes"], "e_nom_extendable", False):
                 c_rate = 0.25
                 if "tes_charger" in net.links.index and "tes_discharger" in net.links.index:
-                    net.model.add_constraint(
+                    net.model.add_constraints(
                         net.model["Link-p_nom"].loc["tes_charger"] == net.model["Store-e_nom"].loc["tes"] * c_rate,
                         name="tes_charger_c_rate",
                     )
-                    net.model.add_constraint(
+                    net.model.add_constraints(
                         net.model["Link-p_nom"].loc["tes_discharger"] == net.model["Store-e_nom"].loc["tes"] * c_rate,
                         name="tes_discharger_c_rate",
                     )
@@ -488,11 +508,17 @@ class HenkelEnergySystem:
         # Calculate OPEX (operational cost of imports scaled to annual equivalent in investment mode)
         annual_weight = float(n.snapshot_weightings.objective.iloc[0]) if hasattr(n.snapshot_weightings.objective, "iloc") else float(n.snapshot_weightings.objective)
         grid_elec_p = n.generators_t.p["grid_electricity"]
-        grid_elec_mc = n.generators["grid_electricity"].marginal_cost if isinstance(n.generators["grid_electricity"].marginal_cost, float) else n.generators_t.marginal_cost["grid_electricity"]
+        if "grid_electricity" in n.generators_t.marginal_cost.columns:
+            grid_elec_mc = n.generators_t.marginal_cost["grid_electricity"]
+        else:
+            grid_elec_mc = n.generators.loc["grid_electricity", "marginal_cost"]
         elec_cost_total = float((grid_elec_p * grid_elec_mc).sum()) * annual_weight
 
         grid_gas_p = n.generators_t.p["grid_gas"]
-        grid_gas_mc = n.generators["grid_gas"].marginal_cost if isinstance(n.generators["grid_gas"].marginal_cost, float) else n.generators_t.marginal_cost["grid_gas"]
+        if "grid_gas" in n.generators_t.marginal_cost.columns:
+            grid_gas_mc = n.generators_t.marginal_cost["grid_gas"]
+        else:
+            grid_gas_mc = n.generators.loc["grid_gas", "marginal_cost"]
         gas_cost_total = float((grid_gas_p * grid_gas_mc).sum()) * annual_weight
 
         opex_total = elec_cost_total + gas_cost_total

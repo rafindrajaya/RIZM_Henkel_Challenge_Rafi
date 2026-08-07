@@ -2,6 +2,8 @@
 Industrial baseload demand sinks (Loads) for PyPSA model.
 """
 
+from typing import Optional
+
 import pypsa
 from pydantic import BaseModel, Field
 from src.components.base import BaseEnergyComponent
@@ -21,10 +23,10 @@ class DemandComponent(BaseEnergyComponent):
         super().__init__("demand_sinks", cfg)
         self.demand_config: DemandConfig = cfg
 
-    def calculate_annualized_capex(self, wacc: float) -> float:
+    def calculate_annualized_capex(self, wacc: float = 0.07) -> float:
         return 0.0
 
-    def build_component(self, network: pypsa.Network) -> None:
+    def build_component(self, network: pypsa.Network, wacc: float = 0.07) -> None:
         # Electricity demand (kW)
         network.add(
             "Load",

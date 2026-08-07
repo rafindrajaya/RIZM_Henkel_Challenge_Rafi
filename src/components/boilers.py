@@ -2,6 +2,8 @@
 Boiler and Heat Exchanger link components for PyPSA model.
 """
 
+from typing import Optional
+
 import pypsa
 from pydantic import BaseModel, Field
 from src.components.base import BaseEnergyComponent

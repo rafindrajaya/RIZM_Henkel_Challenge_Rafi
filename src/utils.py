@@ -244,3 +244,31 @@ def create_summary_dataframe(results_dict: Dict[str, Dict[str, Any]], annual_ton
 
     df_summary = pd.DataFrame(rows).set_index("Scenario")
     return df_summary
+
+
+def create_pypsa_asset_sizing_table(results_or_net: Any) -> pd.DataFrame:
+    """Extracts optimal asset capacities from a solved PyPSA network or results dict."""
+    n = results_or_net.get("network", results_or_net) if isinstance(results_or_net, dict) else getattr(results_or_net, "network", results_or_net)
+
+    asset_rows = []
+    if hasattr(n, "generators") and not n.generators.empty:
+        for name, row in n.generators.iterrows():
+            p_opt = float(getattr(row, "p_nom_opt", getattr(row, "p_nom", 0.0)))
+            if p_opt > 0 and name != "grid_electricity":
+                asset_rows.append({"Asset Component": name.upper(), "Optimal Sizing Capacity": f"{p_opt:,.2f}", "Unit": "kWp"})
+
+    if hasattr(n, "links") and not n.links.empty:
+        for name, row in n.links.iterrows():
+            p_opt = float(getattr(row, "p_nom_opt", getattr(row, "p_nom", 0.0)))
+            if p_opt > 0 and name != "steam_to_heat_exchanger":
+                asset_rows.append({"Asset Component": name.upper(), "Optimal Sizing Capacity": f"{p_opt:,.2f}", "Unit": "kW_th"})
+
+    if hasattr(n, "stores") and not n.stores.empty:
+        for name, row in n.stores.iterrows():
+            e_opt = float(getattr(row, "e_nom_opt", getattr(row, "e_nom", 0.0)))
+            if e_opt > 0:
+                unit = "kWh_th" if "tes" in name.lower() else "kWh"
+                asset_rows.append({"Asset Component": name.upper(), "Optimal Sizing Capacity": f"{e_opt:,.2f}", "Unit": unit})
+
+    return pd.DataFrame(asset_rows)
+

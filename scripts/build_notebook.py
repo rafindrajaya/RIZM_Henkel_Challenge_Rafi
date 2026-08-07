@@ -60,18 +60,17 @@ from src.optimization_model import (
     VariableSizingConfig,
 )
 from src.utils import (
-    setup_visualization_style,
-    plot_seasonal_dispatch_subplots,
-    plot_cost_per_ton_comparison,
-    create_financial_summary_table,
-    create_asset_sizing_table,
-    plot_energy_system_graph,
-    create_optimization_summary_table,
+    plot_dispatch_stacks,
+    plot_dispatch_stacks_interactive,
+    plot_storage_dynamics_interactive,
+    plot_price_duration_curves_interactive,
+    plot_asset_economics_interactive,
+    plot_sec19_grid_fee_protection_interactive,
+    create_summary_dataframe,
+    create_pypsa_asset_sizing_table,
 )
 
-# Apply executive visualization styling
-setup_visualization_style()
-print("Core Modules, Pydantic Schemas & Visualization Abstractions Loaded Successfully.")
+print("Core PyPSA Modules, Pydantic Schemas & PyPSA Reporting Suite Loaded Successfully.")
 """)
 
     # -------------------------------------------------------------------------
@@ -154,26 +153,19 @@ m_path, s_path = prepare_data_files(year=2025)
 df_market_full = pd.read_csv(m_path, index_col=0, parse_dates=True)
 df_solar_full  = pd.read_csv(s_path, index_col=0, parse_dates=True)
 
-# Instantiate Operation Hub MILP Model & Render Topology Graph
+# Instantiate Operation Hub PyPSA Model
 hes_op = HenkelEnergySystem(config=op_config, df_market=df_market_full, df_solar=df_solar_full)
-hes_op.build_energy_system()
+n_op = hes_op.build_energy_system()
 
-print("--- OPERATION HUB ENERGY SYSTEM TOPOLOGY GRAPH ---")
-plot_energy_system_graph(hes_op.solph_es)
-
-# Solve Operation Hub MILP Model
+# Solve Operation Hub PyPSA Model
 meta_op = hes_op.solve()
-df_op_flows = hes_op.get_dispatch_dataframe()
 
 print("\\n--- OPERATION HUB OPTIMIZATION SUMMARY ---")
-df_op_summary = create_optimization_summary_table(meta_op)
-display(df_op_summary)
+display(pd.DataFrame([meta_op]))
 
-# Render EUR/ton Comparison Bar Chart via utils.py abstraction
-plot_cost_per_ton_comparison(baseline_cost=309.02, op_cost=meta_op['cost_per_ton_eur'])
-
-# Render 4-Season Representative Dispatch Grid Subplots via utils.py abstraction
-plot_seasonal_dispatch_subplots(df_op_flows_full=df_op_flows, df_market_full=df_market_full)
+# Render Interactive PyPSA Multi-Carrier Dispatch Stack
+fig_op_dispatch = plot_dispatch_stacks_interactive(meta_op, title="Operation Hub PyPSA Multi-Carrier Dispatch Stack")
+fig_op_dispatch.show()
 """)
 
     # -------------------------------------------------------------------------
@@ -200,34 +192,31 @@ print(f"Mode: {inv_config.optimization_mode.upper()} | Period: {inv_config.start
     # -------------------------------------------------------------------------
     # Cell 7: Decision Hub Graph, Solve, Financial Table & Comparison
     # -------------------------------------------------------------------------
-    cell7 = nbf.v4.new_code_cell("""# Instantiate Decision Hub Investment Model & Render Topology Graph
+    cell7 = nbf.v4.new_code_cell("""# Instantiate Decision Hub Investment Model
 hes_inv = HenkelEnergySystem(config=inv_config, df_market=df_market_full, df_solar=df_solar_full)
-hes_inv.build_energy_system()
-
-print("--- DECISION HUB ENERGY SYSTEM TOPOLOGY GRAPH ---")
-plot_energy_system_graph(hes_inv.solph_es)
+n_inv = hes_inv.build_energy_system()
 
 # Solve Decision Hub Investment Model
 meta_inv = hes_inv.solve()
-inv_caps = hes_inv.get_investment_capacities()
 
 print("\\n--- DECISION HUB OPTIMIZATION SUMMARY ---")
-df_inv_summary = create_optimization_summary_table(meta_inv)
-display(df_inv_summary)
+display(pd.DataFrame([meta_inv]))
 
-# 1. Render Asset Sizing Results Table via utils.py
-df_sizing = create_asset_sizing_table(inv_caps)
+# 1. Render PyPSA Optimal Asset Sizing Results Table
+df_sizing = create_pypsa_asset_sizing_table(meta_inv)
 print("\\n--- OPTIMAL INVESTMENT ASSET SIZING ---")
 display(df_sizing)
 
-# 2. Render Financial Summary Table (NPV, IRR, Payback, EUR/ton) via utils.py
-df_fin = create_financial_summary_table(meta_op=meta_op, meta_inv=meta_inv)
-print("\\n--- EXECUTIVE FINANCIAL SUMMARY TABLE ---")
-display(df_fin)
+# 2. Render Financial & Technical Scenario Comparison Table
+df_summary = create_summary_dataframe({"Operation Hub": meta_op, "Decision Hub": meta_inv})
+print("\\n--- EXECUTIVE SCENARIO COMPARISON SUMMARY TABLE ---")
+display(df_summary)
 
-# 3. Render 3-Way EUR/ton Cost Comparison Bar Chart via utils.py
-plot_cost_per_ton_comparison(baseline_cost=309.02, op_cost=meta_op['cost_per_ton_eur'], inv_cost=meta_inv['cost_per_ton_eur'])
+# 3. Render Asset Financial Economics Bar Chart
+fig_econ = plot_asset_economics_interactive(meta_inv, title="Decision Hub Asset Financial Economics")
+fig_econ.show()
 """)
+
 
     # -------------------------------------------------------------------------
     # Cell 8: Strategic On-Site Protocol Markdown

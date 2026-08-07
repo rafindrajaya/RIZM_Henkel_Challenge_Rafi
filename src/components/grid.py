@@ -29,7 +29,7 @@ class GridElectricityComponent(BaseEnergyComponent):
         super().__init__(cfg.name, cfg)
         self.price_series = price_series
 
-    def build_component(self, network: pypsa.Network) -> None:
+    def build_component(self, network: pypsa.Network, wacc: float = 0.07) -> None:
         network.add(
             "Generator",
             self.name,
@@ -40,7 +40,7 @@ class GridElectricityComponent(BaseEnergyComponent):
             p_max_pu=1.0,
         )
 
-    def calculate_annualized_capex(self, wacc: float) -> float:
+    def calculate_annualized_capex(self, wacc: float = 0.07) -> float:
         return 0.0
 
 
@@ -52,7 +52,7 @@ class GridGasComponent(BaseEnergyComponent):
         super().__init__(cfg.name, cfg)
         self.price_series = price_series
 
-    def build_component(self, network: pypsa.Network) -> None:
+    def build_component(self, network: pypsa.Network, wacc: float = 0.07) -> None:
         network.add(
             "Generator",
             self.name,
