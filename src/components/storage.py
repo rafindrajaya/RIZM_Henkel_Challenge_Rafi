@@ -61,7 +61,7 @@ class BESSComponent(BaseEnergyComponent):
 
     def build_component(self, network: pypsa.Network, wacc: float = 0.07) -> None:
         bus_bess = f"{self.name}_bus"
-        network.add("Bus", bus_bess, carrier="electricity_stored")
+        network.add("Bus", bus_bess, carrier="electricity_stored", x=6.8325, y=51.1725)
 
         capital_cost = self.calculate_annualized_capex(wacc) if self.bess_config.is_extendable else 0.0
 
@@ -147,7 +147,7 @@ class TESComponent(BaseEnergyComponent):
 
     def build_component(self, network: pypsa.Network, wacc: float = 0.07) -> None:
         bus_tes = f"{self.name}_bus"
-        network.add("Bus", bus_tes, carrier="heat_stored")
+        network.add("Bus", bus_tes, carrier="heat_stored", x=6.8355, y=51.1710)
 
         capital_cost = self.calculate_annualized_capex(wacc) if self.tes_config.is_extendable else 0.0
 

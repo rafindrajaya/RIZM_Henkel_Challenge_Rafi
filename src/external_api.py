@@ -191,8 +191,35 @@ def generate_benchmark_market_data(year: int = 2025) -> pd.DataFrame:
 from src.components import compute_pv_normalized_yield
 
 
+def generate_wind_normalized_yield(times: pd.DatetimeIndex, seed: int = 42) -> pd.Series:
+    """
+    Generates realistic 2025 German Onshore Wind normalized yield profile (0..1 capacity factor).
+    Models seasonal winter peak generation (~28% annual average capacity factor)
+    and Weibull wind speed distribution passed through an IEC Class II turbine power curve.
+    """
+    np.random.seed(seed)
+    day_of_year = times.dayofyear
+
+    # Seasonal variation: higher in winter (Jan/Feb/Nov/Dec), lower in summer (Jun/Jul/Aug)
+    seasonal_scale = 8.0 + 3.0 * np.cos((day_of_year - 15) * 2 * np.pi / 365)
+    diurnal_noise = np.random.weibull(2.0, len(times)) * seasonal_scale
+
+    # IEC Class II turbine power curve conversion (cut-in 3m/s, rated 12m/s, cut-out 25m/s)
+    wind_speed = np.clip(diurnal_noise, 0.0, 30.0)
+    power_pu = np.where(
+        wind_speed < 3.0,
+        0.0,
+        np.where(
+            wind_speed <= 12.0,
+            ((wind_speed - 3.0) / (12.0 - 3.0)) ** 3,
+            np.where(wind_speed <= 25.0, 1.0, 0.0),
+        ),
+    )
+    return pd.Series(np.clip(power_pu, 0.0, 1.0), index=times)
+
+
 def prepare_data_files(year: int = 2025, force_repopulate: bool = True) -> Tuple[Path, Path]:
-    """Generates, enriches with optimal PV yield profile, and writes CSV dataset files into data/ directory."""
+    """Generates, enriches with optimal PV and Wind yield profiles, and writes CSV dataset files into data/ directory."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     market_path = DATA_DIR / f"market_data_{year}.csv"
@@ -208,10 +235,9 @@ def prepare_data_files(year: int = 2025, force_repopulate: bool = True) -> Tuple
         solar_df["pv_normalized_yield"] = compute_pv_normalized_yield(
             solar_df, lat=DUESSELDORF_LAT, lon=DUESSELDORF_LON, tilt=38.0, azimuth=180.0
         )
+        solar_df["wind_normalized_yield"] = generate_wind_normalized_yield(solar_df.index)
         solar_df.to_csv(solar_path)
-        print(f"[Info] Saved repopulated solar weather data with cached pv_normalized_yield to {solar_path}")
-        solar_df.to_csv(solar_path)
-        print(f"[Info] Saved repopulated solar weather data with cached pv_normalized_yield to {solar_path}")
+        print(f"[Info] Saved repopulated solar/wind weather data with cached yield profiles to {solar_path}")
 
     return market_path, solar_path
 

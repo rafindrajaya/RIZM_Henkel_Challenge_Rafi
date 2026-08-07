@@ -33,6 +33,10 @@ logger = logging.getLogger(__name__)
 from src.components import (
     GridElectricityComponent,
     GridGasComponent,
+    PVPPAComponent,
+    WindPPAComponent,
+    PVPPAConfig,
+    WindPPAConfig,
     PVComponent,
     PVComponentConfig,
     compute_pv_normalized_yield,
@@ -71,6 +75,8 @@ GRID_ELEC_EMISSION_FACTOR_T_PER_MWH = 0.38
 class FixedSizingConfig(BaseModel):
     """Configuration for fixed existing/installed asset capacities (kW or kWh)."""
     pv: float = Field(default=0.0, ge=0.0, description="Rooftop PV installed capacity in kWp")
+    pv_ppa: float = Field(default=0.0, ge=0.0, description="PV PPA contract capacity in kW")
+    wind_ppa: float = Field(default=0.0, ge=0.0, description="Wind PPA contract capacity in kW")
     bess: float = Field(default=0.0, ge=0.0, description="Battery Storage capacity in kWh")
     hthp: float = Field(default=15000.0, ge=0.0, description="High-Temp Heat Pump thermal capacity in kW_th")
     tes: float = Field(default=20000.0, ge=0.0, description="Thermal Energy Storage capacity in kWh_th")
@@ -90,6 +96,8 @@ class ComponentBounds(BaseModel):
 class VariableSizingConfig(BaseModel):
     """Configuration for variable investment candidate assets."""
     pv: ComponentBounds = Field(default_factory=lambda: ComponentBounds(enabled=True, min_capacity=0.0, max_capacity=25000.0))
+    pv_ppa: ComponentBounds = Field(default_factory=lambda: ComponentBounds(enabled=True, min_capacity=0.0, max_capacity=50000.0))
+    wind_ppa: ComponentBounds = Field(default_factory=lambda: ComponentBounds(enabled=True, min_capacity=0.0, max_capacity=50000.0))
     bess: ComponentBounds = Field(default_factory=lambda: ComponentBounds(enabled=True, min_capacity=0.0, max_capacity=50000.0))
     hthp: ComponentBounds = Field(default_factory=lambda: ComponentBounds(enabled=True, min_capacity=0.0, max_capacity=40000.0))
     tes: ComponentBounds = Field(default_factory=lambda: ComponentBounds(enabled=True, min_capacity=0.0, max_capacity=100000.0))
@@ -119,12 +127,13 @@ class FacilityProjectConfig(BaseModel):
 class ComponentConfigs(BaseModel):
     """Container holding all validated component configurations from TOML."""
     pv: PVComponentConfig
+    pv_ppa: PVPPAConfig = Field(default_factory=PVPPAConfig)
+    wind_ppa: WindPPAConfig = Field(default_factory=WindPPAConfig)
     bess: BESSComponentConfig
     chp: CHPComponentConfig
     eboiler: EBoilerConfig
     hthp: HTHPComponentConfig
     tes: TESComponentConfig = Field(default_factory=TESComponentConfig)
-
 
 
 def parse_config_date(date_str: str) -> pd.Timestamp:
@@ -160,6 +169,16 @@ def load_component_config(components_dir: Path = DEFAULT_COMPONENTS_DIR) -> Comp
                 f"Missing TOML config for component '{name}'. Expected: {components_dir / f'{name}.toml'}"
             )
         validated[name] = model_cls(**raw_data)
+
+    if "pv_ppa" in raw_configs:
+        validated["pv_ppa"] = PVPPAConfig(**raw_configs["pv_ppa"])
+    else:
+        validated["pv_ppa"] = PVPPAConfig()
+
+    if "wind_ppa" in raw_configs:
+        validated["wind_ppa"] = WindPPAConfig(**raw_configs["wind_ppa"])
+    else:
+        validated["wind_ppa"] = WindPPAConfig()
 
     if "tes" in raw_configs:
         validated["tes"] = TESComponentConfig(**raw_configs["tes"])
@@ -222,6 +241,8 @@ class HenkelEnergySystem:
 
         # Fixed sizing capacities
         self.pv_capacity_kwp = self.config.fixed_components_sizing.pv
+        self.pv_ppa_capacity_kw = self.config.fixed_components_sizing.pv_ppa
+        self.wind_ppa_capacity_kw = self.config.fixed_components_sizing.wind_ppa
         self.bess_capacity_kwh = self.config.fixed_components_sizing.bess
         self.hthp_capacity_kw_th = self.config.fixed_components_sizing.hthp
         self.tes_capacity_kwh_th = self.config.fixed_components_sizing.tes
@@ -293,11 +314,11 @@ class HenkelEnergySystem:
         else:
             n.snapshot_weightings["objective"] = 1.0
 
-        # Add carrier buses
-        n.add("Bus", "b_elec", carrier="electricity")
-        n.add("Bus", "b_gas", carrier="gas")
-        n.add("Bus", "b_steam_ht", carrier="steam_ht")
-        n.add("Bus", "b_heat_lt", carrier="heat_lt")
+        # Add carrier buses with Henkel Düsseldorf Holthausen coordinates (x=longitude, y=latitude)
+        n.add("Bus", "b_elec", carrier="electricity", x=6.8320, y=51.1720)
+        n.add("Bus", "b_gas", carrier="gas", x=6.8310, y=51.1710)
+        n.add("Bus", "b_steam_ht", carrier="steam_ht", x=6.8340, y=51.1730)
+        n.add("Bus", "b_heat_lt", carrier="heat_lt", x=6.8350, y=51.1715)
 
         # 1. Grid Electricity and Natural Gas Import Components
         if self.enable_sec19_protection:
@@ -339,7 +360,7 @@ class HenkelEnergySystem:
             marginal_cost=0.0,
         )
 
-        # 3. Solar PV Generator (PVComponent computes its profile directly from df_solar)
+        # 3. Solar PV Generator & PPA Generators
         is_pv_ext = (self.mode == "investment") and self.config.variable_components_sizing.pv.enabled
         pv_cfg = PVComponentConfig(
             installed_capacity_kw=self.pv_capacity_kwp,
@@ -351,6 +372,36 @@ class HenkelEnergySystem:
         )
         pv_comp = PVComponent(config=pv_cfg, df_solar=df_s)
         pv_comp.build_component(n, wacc=self.wacc)
+
+        # 3b. PV PPA Component
+        is_pv_ppa_ext = (self.mode == "investment") and self.config.variable_components_sizing.pv_ppa.enabled
+        pv_ppa_cfg = PVPPAConfig(
+            installed_capacity_kw=self.pv_ppa_capacity_kw,
+            is_extendable=is_pv_ppa_ext,
+            max_capacity_kw=self.config.variable_components_sizing.pv_ppa.max_capacity if is_pv_ppa_ext else 50000.0,
+            strike_price_eur_per_mwh=self.comp_cfg.pv_ppa.strike_price_eur_per_mwh,
+            annual_fee_eur_per_kw_year=self.comp_cfg.pv_ppa.annual_fee_eur_per_kw_year,
+        )
+        pv_profile = df_s["pv_normalized_yield"] if "pv_normalized_yield" in df_s.columns else pd.Series(pv_comp.compute_pv_normalized_yield(df_s), index=df_s.index)
+        pv_ppa_comp = PVPPAComponent(pv_profile=pv_profile, config=pv_ppa_cfg)
+        pv_ppa_comp.build_component(n, wacc=self.wacc)
+
+        # 3c. Wind PPA Component
+        is_wind_ppa_ext = (self.mode == "investment") and self.config.variable_components_sizing.wind_ppa.enabled
+        wind_ppa_cfg = WindPPAConfig(
+            installed_capacity_kw=self.wind_ppa_capacity_kw,
+            is_extendable=is_wind_ppa_ext,
+            max_capacity_kw=self.config.variable_components_sizing.wind_ppa.max_capacity if is_wind_ppa_ext else 50000.0,
+            strike_price_eur_per_mwh=self.comp_cfg.wind_ppa.strike_price_eur_per_mwh,
+            annual_fee_eur_per_kw_year=self.comp_cfg.wind_ppa.annual_fee_eur_per_kw_year,
+        )
+        if "wind_normalized_yield" in df_s.columns:
+            wind_profile = df_s["wind_normalized_yield"]
+        else:
+            from src.external_api import generate_wind_normalized_yield
+            wind_profile = generate_wind_normalized_yield(df_s.index)
+        wind_ppa_comp = WindPPAComponent(wind_profile=wind_profile, config=wind_ppa_cfg)
+        wind_ppa_comp.build_component(n, wacc=self.wacc)
 
         # 4. CHP Unit (Gas -> Elec + Steam_HT)
         is_chp_ext = (self.mode == "investment") and self.config.variable_components_sizing.chp.enabled
@@ -460,11 +511,16 @@ class HenkelEnergySystem:
                         name="tes_discharger_c_rate",
                     )
 
-        # PyPSA Pre-Optimization Consistency Check
+        # PyPSA Pre-Optimization Consistency Check & Sanitization
+        n.sanitize()
         n.consistency_check()
 
         # Optimize using linopy / highs
-        n.optimize(solver_name=solver_name, extra_functionality=apply_c_rate_coupling)
+        n.optimize(
+            solver_name=solver_name,
+            extra_functionality=apply_c_rate_coupling,
+            include_objective_constant=False,
+        )
 
         # Calculate OPEX (operational cost of imports scaled to annual equivalent in investment mode)
         annual_weight = float(n.snapshot_weightings.objective.iloc[0]) if hasattr(n.snapshot_weightings.objective, "iloc") else float(n.snapshot_weightings.objective)
@@ -482,7 +538,19 @@ class HenkelEnergySystem:
             grid_gas_mc = n.generators.loc["grid_gas", "marginal_cost"]
         gas_cost_total = float((grid_gas_p * grid_gas_mc).sum()) * annual_weight
 
-        opex_total = elec_cost_total + gas_cost_total
+        pv_ppa_cost = 0.0
+        if "pv_ppa" in n.generators.index:
+            p_pv_ppa = n.generators_t.p["pv_ppa"]
+            mc_pv_ppa = n.generators_t.marginal_cost["pv_ppa"] if "pv_ppa" in n.generators_t.marginal_cost.columns else n.generators.loc["pv_ppa", "marginal_cost"]
+            pv_ppa_cost = float((p_pv_ppa * mc_pv_ppa).sum()) * annual_weight
+
+        wind_ppa_cost = 0.0
+        if "wind_ppa" in n.generators.index:
+            p_wind_ppa = n.generators_t.p["wind_ppa"]
+            mc_wind_ppa = n.generators_t.marginal_cost["wind_ppa"] if "wind_ppa" in n.generators_t.marginal_cost.columns else n.generators.loc["wind_ppa", "marginal_cost"]
+            wind_ppa_cost = float((p_wind_ppa * mc_wind_ppa).sum()) * annual_weight
+
+        opex_total = elec_cost_total + gas_cost_total + pv_ppa_cost + wind_ppa_cost
 
         # Calculate CAPEX (annualized investment costs)
         capex_total = 0.0
@@ -512,6 +580,10 @@ class HenkelEnergySystem:
         optimal_capacities = {}
         if "solar_pv" in n.generators.index:
             optimal_capacities["pv_kwp"] = float(n.generators.loc["solar_pv", "p_nom_opt" if "p_nom_opt" in n.generators.columns else "p_nom"])
+        if "pv_ppa" in n.generators.index:
+            optimal_capacities["pv_ppa_kw"] = float(n.generators.loc["pv_ppa", "p_nom_opt" if "p_nom_opt" in n.generators.columns else "p_nom"])
+        if "wind_ppa" in n.generators.index:
+            optimal_capacities["wind_ppa_kw"] = float(n.generators.loc["wind_ppa", "p_nom_opt" if "p_nom_opt" in n.generators.columns else "p_nom"])
         if "bess" in n.stores.index:
             optimal_capacities["bess_kwh"] = float(n.stores.loc["bess", "e_nom_opt" if "e_nom_opt" in n.stores.columns else "e_nom"])
         if "heat_pump" in n.links.index:
@@ -527,6 +599,8 @@ class HenkelEnergySystem:
             "capex_annualized_eur": capex_total,
             "elec_cost_eur": elec_cost_total,
             "gas_cost_eur": gas_cost_total,
+            "pv_ppa_cost_eur": pv_ppa_cost,
+            "wind_ppa_cost_eur": wind_ppa_cost,
             "emissions_t_co2": emissions_t_co2,
             "peak_grid_demand_kw": peak_grid_kw,
             "sec19_violation": sec19_violation,

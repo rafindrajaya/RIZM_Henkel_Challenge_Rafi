@@ -272,3 +272,27 @@ def create_pypsa_asset_sizing_table(results_or_net: Any) -> pd.DataFrame:
 
     return pd.DataFrame(asset_rows)
 
+
+def explore_network_interactive(results_or_net: Any):
+    """Generates an interactive Folium web map of the PyPSA topology pre- or post-solve using n.explore()."""
+    n = results_or_net.get("network", results_or_net) if isinstance(results_or_net, dict) else getattr(results_or_net, "network", results_or_net)
+
+    # Ensure buses have default coordinates if unassigned
+    default_coords = {
+        "b_elec": (6.8320, 51.1720),
+        "b_gas": (6.8310, 51.1710),
+        "b_steam_ht": (6.8340, 51.1730),
+        "b_heat_lt": (6.8350, 51.1715),
+        "bess_bus": (6.8325, 51.1725),
+        "tes_bus": (6.8355, 51.1710),
+    }
+    for bus_name, (x, y) in default_coords.items():
+        if bus_name in n.buses.index:
+            if pd.isna(n.buses.loc[bus_name, "x"]) or n.buses.loc[bus_name, "x"] == 0:
+                n.buses.loc[bus_name, "x"] = x
+            if pd.isna(n.buses.loc[bus_name, "y"]) or n.buses.loc[bus_name, "y"] == 0:
+                n.buses.loc[bus_name, "y"] = y
+
+    return n.explore()
+
+

@@ -9,17 +9,21 @@
 6. The challenge.ipynb should still have the same structure in a way that it first introduces the challenge with the md cell, then it starts the baseline calculation with fermi estimation and market data in a python cell, and then it starts with the operation_hub solution introduction and decision_hub solution introduction while maintanining the config-based, API first structure and present the solution with plots and visualitaion from utils that is based on intuition of .agent/skills/pypsa-asset-economics. Lastly, it addresses the second challenge question that complements or answers question of how the first challenge with operation and decision hub can be improved by meeting with the stakeholder from Henkel
 7. Update the README.md after the refactor 
 
-## TODO 2:
-- Move the pvlib pv yield function to pvcomponent class for better visibility and code structure
-- Validate the data/components with .agent/skills/pypsa-asset-economics
+
+## DONE
+- Move the pvlib pv yield function to pvcomponent class for better visibility and code structure (DONE)
+- Validate the data/components with .agent/skills/pypsa-asset-economics (DONE)
+- Create PV PPA and Wind PPA classes in grid.py module, profile generators in external_api.py, and integrate with Pydantic configs in optimization_model.py (DONE)
 - Is there a way to visualize the topology with PyPSA built in tools?
-- Create a PV PPA and WT PPA classes components in grid.py module and import available 2025 power profile and cost of this PPA example
-- Create a CI test that checks whether both the operation hub and decision hub framework can converge optimally under different sizing configuration for a 1 week operation and that the result is not multiple magnitude off from the range of possible results
+
+## TODO 2:
+- The n.explore visualization for investment hub should be after solve because this is when all the final components are instatiated
+- Remove the fermi baseline calculation and just compare operation hub with existing compoenents and decision hub that includes the option of investing in battery, PPA PV, PPA Wind, TES
 
 
 ## challenge.ipynb structure change (challenge.ipynb)
-- 
 - Initialize the operation hub with all the components 
+- The second challenge question should then answer what we need from stakeholder so that the operation hub and investment hub solution can be even more defensible business case with the actual energy consumption load for different carriers at differet temperature level for the heat
 
 
 ## Questions
@@ -47,3 +51,5 @@ Final testing of logical accuracy, reasoning, and deliveries of the challenge de
 
 ### Not urgent
 - - CHP FixedSizingConfig should only just be one value of the the combined heat and power sizing that is then get separated into the COP of elec and heat. For instance, if the fixed sizing is 50 MW, then 
+- Is there a way to simulate load flexibility that should always be above 80% demand capacity in PyPSA for all the designed demands?
+- Create a CI test that checks whether both the operation hub and decision hub framework can converge optimally under different sizing configuration for a 1 week operation and that the result is not multiple magnitude off from the range of possible results

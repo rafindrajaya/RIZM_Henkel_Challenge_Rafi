@@ -3,7 +3,16 @@ Modular OOP Component Package for PyPSA Energy System Architecture.
 """
 
 from src.components.base import BaseEnergyComponent
-from src.components.grid import GridElectricityComponent, GridGasComponent, GridElectricityConfig, GridGasConfig
+from src.components.grid import (
+    GridElectricityComponent,
+    GridGasComponent,
+    GridElectricityConfig,
+    GridGasConfig,
+    PVPPAComponent,
+    WindPPAComponent,
+    PVPPAConfig,
+    WindPPAConfig,
+)
 from src.components.pv import PVComponent, PVComponentConfig, compute_pv_normalized_yield
 from src.components.chp import GasCHPComponent, CHPComponentConfig
 from src.components.boilers import GasBoilerComponent, EBoilerComponent, SteamHeatExchangerComponent, GasBoilerConfig, EBoilerConfig, SteamHeatExchangerConfig
@@ -17,6 +26,10 @@ __all__ = [
     "GridGasComponent",
     "GridElectricityConfig",
     "GridGasConfig",
+    "PVPPAComponent",
+    "WindPPAComponent",
+    "PVPPAConfig",
+    "WindPPAConfig",
     "PVComponent",
     "PVComponentConfig",
     "compute_pv_normalized_yield",
