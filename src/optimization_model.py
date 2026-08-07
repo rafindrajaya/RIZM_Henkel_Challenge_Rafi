@@ -30,7 +30,7 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
-from src.components import (
+from .components import (
     GridElectricityComponent,
     GridGasComponent,
     PVPPAComponent,
@@ -339,11 +339,14 @@ class HenkelEnergySystem:
 
         grid_elec = GridElectricityComponent(price_series=pd.Series(grid_elec_cost_kwh, index=df_m.index))
         grid_elec.build_component(n, wacc=self.wacc)
+        if self.co2_tax_eur_per_ton:
+            gas_cost_eur_kwh = (
+                np.asarray(df_m["gas_spot_eur_mwh"], dtype=float)
+                + (self.co2_tax_eur_per_ton * GAS_EMISSION_FACTOR_T_PER_MWH)
+            ) / 1000.0
+        else:
+            gas_cost_eur_kwh = (  np.asarray(df_m["gas_total_eur_mwh"], dtype=float)   ) / 1000.0
 
-        gas_cost_eur_kwh = (
-            np.asarray(df_m["gas_spot_eur_mwh"], dtype=float)
-            + (self.co2_tax_eur_per_ton * GAS_EMISSION_FACTOR_T_PER_MWH)
-        ) / 1000.0
         grid_gas = GridGasComponent(price_series=pd.Series(gas_cost_eur_kwh, index=df_m.index))
         grid_gas.build_component(n, wacc=self.wacc)
 
@@ -417,7 +420,7 @@ class HenkelEnergySystem:
         if "wind_normalized_yield" in df_s.columns:
             wind_profile = df_s["wind_normalized_yield"]
         else:
-            from src.external_api import generate_wind_normalized_yield
+            from .external_api import generate_wind_normalized_yield
             wind_profile = generate_wind_normalized_yield(df_s.index)
         wind_ppa_comp = WindPPAComponent(wind_profile=wind_profile, config=wind_ppa_cfg)
         wind_ppa_comp.build_component(n, wacc=self.wacc)

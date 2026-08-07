@@ -16,10 +16,12 @@
 - Create PV PPA and Wind PPA classes in grid.py module, profile generators in external_api.py, and integrate with Pydantic configs in optimization_model.py (DONE)
 - Is there a way to visualize the topology with PyPSA built in tools?
 - The n.explore visualization for investment hub should be after solve because this is when all the final components are instatiated
+- is calculate_annualized_capex function important to be in all the component classes or just defined in one module and used in the different classes with different input based on the config? 
+- Remove the fermi baseline calculation and just compare operation hub with existing compoenents and decision hub that includes the option of investing in battery, PPA PV, PPA Wind, TES
 
 ## TODO 2:
 
-- Remove the fermi baseline calculation and just compare operation hub with existing compoenents and decision hub that includes the option of investing in battery, PPA PV, PPA Wind, TES
+
 
 
 ## challenge.ipynb structure change (challenge.ipynb)
@@ -28,7 +30,7 @@
 
 
 ## Questions
-- is calculate_annualized_capex function important to be in all the component classes or just defined in one module and used in the different classes with different input based on the config? 
+
 
 
 ### Notes on content

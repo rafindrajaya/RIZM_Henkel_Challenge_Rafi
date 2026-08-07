@@ -124,6 +124,67 @@ def plot_dispatch_stacks_interactive(results: Dict[str, Any], title: str = "Inte
     return fig
 
 
+def plot_market_prices_interactive(
+    results: Dict[str, Any],
+    title: str = "Grid Spot Market Price Dynamics"
+):
+    """
+    Generates an interactive Plotly line chart displaying effective Electricity
+    and Natural Gas spot market price profiles [EUR/MWh] for a solved PyPSA network.
+    Automatically reflects configuration settings (e.g. Sec19 grid fee discount, CO2 tax).
+    """
+    n = results["network"]
+    snapshots = n.snapshots
+
+    elec_price = None
+    if "grid_electricity" in n.generators_t.marginal_cost.columns:
+        elec_price = n.generators_t.marginal_cost["grid_electricity"] * 1000.0
+    elif "grid_electricity" in n.generators.index:
+        mc = float(n.generators.loc["grid_electricity", "marginal_cost"]) * 1000.0
+        elec_price = pd.Series(mc, index=snapshots)
+
+    gas_price = None
+    if "grid_gas" in n.generators_t.marginal_cost.columns:
+        gas_price = n.generators_t.marginal_cost["grid_gas"] * 1000.0
+    elif "grid_gas" in n.generators.index:
+        mc = float(n.generators.loc["grid_gas", "marginal_cost"]) * 1000.0
+        gas_price = pd.Series(mc, index=snapshots)
+
+    if not HAS_PLOTLY:
+        fig, ax = plt.subplots(figsize=(12, 5))
+        if elec_price is not None:
+            ax.plot(snapshots, elec_price, label="Electricity Spot Price [EUR/MWh]", color="#3182bd", linewidth=1.5)
+        if gas_price is not None:
+            ax.plot(snapshots, gas_price, label="Natural Gas Spot Price [EUR/MWh]", color="#e6550d", linewidth=1.5)
+        ax.set_title(title)
+        ax.set_ylabel("Price [EUR/MWh]")
+        ax.set_xlabel("Timestamp")
+        ax.grid(True, linestyle="--", alpha=0.5)
+        ax.legend()
+        plt.tight_layout()
+        return fig
+
+    fig = go.Figure()
+    if elec_price is not None:
+        fig.add_trace(go.Scatter(x=snapshots, y=elec_price, name="Grid Electricity Price [€/MWh]", line=dict(color="#3182bd", width=2)))
+    if gas_price is not None:
+        fig.add_trace(go.Scatter(x=snapshots, y=gas_price, name="Natural Gas Price [€/MWh]", line=dict(color="#e6550d", width=2)))
+
+    fig.update_layout(
+        title=title,
+        xaxis_title="Timestamp",
+        yaxis_title="Spot Price [EUR / MWh]",
+        template="plotly_white",
+        hovermode="x unified"
+    )
+    return fig
+
+
+# Backward-compatibility alias
+plot_dispatch_with_market_prices_interactive = plot_market_prices_interactive
+
+
+
 def plot_storage_dynamics_interactive(results: Dict[str, Any], title: str = "BESS & TES State-of-Charge (SOC) Dynamics"):
     """Generates interactive SOC plot for Battery and Thermal Energy Storage."""
     n = results["network"]
@@ -225,12 +286,35 @@ def plot_sec19_grid_fee_protection_interactive(results: Dict[str, Any], threshol
     return fig
 
 
+def get_period_effective_tonnage(res: Any, annual_tonnage: float = 450000.0) -> float:
+    """
+    Calculates period-adjusted production tonnage based on network snapshot length and weighting.
+    
+    If the network was solved for N snapshots without objective weighting annualization,
+    annual tonnage is scaled down proportionally to (N / 8760).
+    If objective weighting is already annualized (8760 / N), full annual tonnage is returned.
+    """
+    if isinstance(res, dict) and "network" in res:
+        n = res["network"]
+        if hasattr(n, "snapshots"):
+            num_snapshots = len(n.snapshots)
+            if num_snapshots > 0:
+                obj_weight = float(n.snapshot_weightings.objective.iloc[0]) if hasattr(n.snapshot_weightings.objective, "iloc") else float(n.snapshot_weightings.objective)
+                # If objective weighting already scales to 8760h (investment mode), use full annual tonnage
+                if abs(obj_weight - (8760.0 / num_snapshots)) < 1e-3:
+                    return annual_tonnage
+                # Otherwise scale annual tonnage proportionally to solved period duration
+                return annual_tonnage * (num_snapshots / 8760.0)
+    return annual_tonnage
+
+
 def create_summary_dataframe(results_dict: Dict[str, Dict[str, Any]], annual_tonnage: float = 450000.0) -> pd.DataFrame:
     """Compiles scenario results into a clean financial comparison table (EUR/ton, OPEX, CAPEX, CO2)."""
     rows = []
     for scenario_name, res in results_dict.items():
         tot_cost = res["total_cost_eur"]
-        cost_per_ton = tot_cost / annual_tonnage
+        eff_tonnage = get_period_effective_tonnage(res, annual_tonnage=annual_tonnage)
+        cost_per_ton = tot_cost / eff_tonnage if eff_tonnage > 0 else 0.0
         rows.append({
             "Scenario": scenario_name,
             "Total Cost (EUR)": tot_cost,
@@ -244,6 +328,83 @@ def create_summary_dataframe(results_dict: Dict[str, Dict[str, Any]], annual_ton
 
     df_summary = pd.DataFrame(rows).set_index("Scenario")
     return df_summary
+
+
+def plot_scenario_cost_per_ton_interactive(
+    scenarios: Dict[str, Any],
+    annual_tonnage: float = 450000.0,
+    title: str = "Unit Production Cost Comparison (€/ton)"
+):
+    """
+    Generates a modular bar chart comparing EUR/ton across arbitrary scenarios (2, 3, or N scenarios).
+    Automatically scales production tonnage to match the period duration of each solved scenario.
+    
+    Parameters
+    ----------
+    scenarios : Dict[str, Any]
+        Mapping of Scenario Name -> (PyPSA results dict OR numeric float/int EUR/ton value).
+        Examples:
+            # 2 Scenarios:
+            plot_scenario_cost_per_ton_interactive({"Baseline": 145.20, "Operation Hub": meta_op})
+            
+            # 3 Scenarios:
+            plot_scenario_cost_per_ton_interactive({"Baseline": 145.20, "Operation Hub": meta_op, "Decision Hub": meta_inv})
+    annual_tonnage : float
+        Annual production output in tons (default 450,000 tons/year).
+    title : str
+        Chart title.
+    """
+    labels = []
+    values = []
+
+    for name, val in scenarios.items():
+        labels.append(name)
+        eff_tonnage = get_period_effective_tonnage(val, annual_tonnage=annual_tonnage)
+        if isinstance(val, (int, float)):
+            # If input is large (> 10,000), interpret as total cost EUR; otherwise treat directly as EUR/ton
+            cost_per_ton = float(val) / eff_tonnage if float(val) > 10000.0 else float(val)
+        elif isinstance(val, dict):
+            if "total_cost_eur" in val:
+                cost_per_ton = float(val["total_cost_eur"]) / eff_tonnage if eff_tonnage > 0 else 0.0
+            elif "cost_per_ton" in val:
+                cost_per_ton = float(val["cost_per_ton"])
+            else:
+                cost_per_ton = 0.0
+        else:
+            cost_per_ton = 0.0
+        values.append(cost_per_ton)
+
+    colors = ["#e6550d", "#3182bd", "#2ca02c", "#74c476", "#fd8d3c", "#9ecae1"]
+    bar_colors = [colors[i % len(colors)] for i in range(len(labels))]
+
+    if not HAS_PLOTLY:
+        fig, ax = plt.subplots(figsize=(8, 5))
+        ax.bar(labels, values, color=bar_colors)
+        ax.set_ylabel("EUR / ton")
+        ax.set_title(title)
+        ax.grid(True, linestyle="--", alpha=0.5)
+        for i, v in enumerate(values):
+            ax.text(i, v + (max(values) * 0.01 if values else 1.0), f"€{v:.2f}/t", ha="center", fontweight="bold")
+        plt.tight_layout()
+        return fig
+
+    fig = go.Figure(data=[
+        go.Bar(
+            x=labels,
+            y=values,
+            marker_color=bar_colors,
+            text=[f"€{v:.2f} / ton" for v in values],
+            textposition="auto",
+            hovertemplate="<b>%{x}</b><br>Unit Cost: €%{y:.2f} / ton<extra></extra>"
+        )
+    ])
+    fig.update_layout(
+        title=title,
+        yaxis_title="Unit Cost [EUR / ton]",
+        xaxis_title="Scenario Tiers",
+        template="plotly_white"
+    )
+    return fig
 
 
 def create_pypsa_asset_sizing_table(results_or_net: Any) -> pd.DataFrame:

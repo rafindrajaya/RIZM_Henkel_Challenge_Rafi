@@ -42,6 +42,9 @@ trigger: always_on
 
 ### Rule 7: Confirmation before implimentation 
 * Whenever I prompt a query or task, always confirm your plan and idea of action first before implementation. 
+
+### Rule 8: NEVER MAKE ANY CHANGES TO /Users/mrafiindrajaya/Desktop/Github Projects/RIZM_challenge_Rafi/challenge.ipynb
+* Whenever I ask an inquiry related to the notebook that is to be implemented in the notebook, just answer in the chatbox. Don't ever make changes to the notebook!
 ---
 
 ## 📋 MANDATORY RESPONSE FORMAT FOR ALL TASKS
