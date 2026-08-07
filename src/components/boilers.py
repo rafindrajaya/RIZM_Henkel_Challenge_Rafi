@@ -6,10 +6,10 @@ from typing import Optional
 
 import pypsa
 from pydantic import BaseModel, Field
-from src.components.base import BaseEnergyComponent
+from .base import BaseEnergyComponent, BaseComponentConfig
 
 
-class GasBoilerConfig(BaseModel):
+class GasBoilerConfig(BaseComponentConfig):
     name: str = "gas_boiler"
     bus_in: str = "b_gas"
     bus_out: str = "b_steam_ht"
@@ -23,7 +23,7 @@ class GasBoilerConfig(BaseModel):
     max_capacity_th_kw: float = Field(default=200000.0, ge=0.0)
 
 
-class EBoilerConfig(BaseModel):
+class EBoilerConfig(BaseComponentConfig):
     name: str = "electric_boiler"
     bus_in: str = "b_elec"
     bus_out: str = "b_steam_ht"
@@ -37,7 +37,7 @@ class EBoilerConfig(BaseModel):
     max_capacity_th_kw: float = Field(default=50000.0, ge=0.0)
 
 
-class SteamHeatExchangerConfig(BaseModel):
+class SteamHeatExchangerConfig(BaseComponentConfig):
     name: str = "steam_to_heat_exchanger"
     bus_in: str = "b_steam_ht"
     bus_out: str = "b_heat_lt"
@@ -52,17 +52,8 @@ class GasBoilerComponent(BaseEnergyComponent):
         super().__init__(config.name, config)
         self.boiler_config: GasBoilerConfig = config
 
-    def calculate_annualized_capex(self, wacc: float) -> float:
-        r = wacc
-        n = self.boiler_config.lifetime_years
-        if r > 0:
-            annuity_factor = (r * (1 + r) ** n) / ((1 + r) ** n - 1)
-        else:
-            annuity_factor = 1.0 / n
-        return float(self.boiler_config.capex_eur_per_kw_th * annuity_factor + self.boiler_config.opex_eur_per_kw_th_year)
-
     def build_component(self, network: pypsa.Network, wacc: float = 0.07) -> None:
-        capital_cost = self.calculate_annualized_capex(wacc) if self.boiler_config.is_extendable else 0.0
+        capital_cost = self.get_capital_cost(wacc)
         eff = self.boiler_config.thermal_efficiency
         if self.boiler_config.is_extendable:
             network.add(
@@ -95,17 +86,8 @@ class EBoilerComponent(BaseEnergyComponent):
         super().__init__(config.name, config)
         self.boiler_config: EBoilerConfig = config
 
-    def calculate_annualized_capex(self, wacc: float) -> float:
-        r = wacc
-        n = self.boiler_config.lifetime_years
-        if r > 0:
-            annuity_factor = (r * (1 + r) ** n) / ((1 + r) ** n - 1)
-        else:
-            annuity_factor = 1.0 / n
-        return float(self.boiler_config.capex_eur_per_kw_th * annuity_factor + self.boiler_config.opex_eur_per_kw_th_year)
-
     def build_component(self, network: pypsa.Network, wacc: float = 0.07) -> None:
-        capital_cost = self.calculate_annualized_capex(wacc) if self.boiler_config.is_extendable else 0.0
+        capital_cost = self.get_capital_cost(wacc)
         eff = self.boiler_config.thermal_efficiency
         if self.boiler_config.is_extendable:
             network.add(
@@ -137,9 +119,6 @@ class SteamHeatExchangerComponent(BaseEnergyComponent):
     def __init__(self, config: Optional[SteamHeatExchangerConfig] = None):
         cfg = config or SteamHeatExchangerConfig()
         super().__init__(cfg.name, cfg)
-
-    def calculate_annualized_capex(self, wacc: float) -> float:
-        return 0.0
 
     def build_component(self, network: pypsa.Network, wacc: float = 0.07) -> None:
         eff = self.config.efficiency

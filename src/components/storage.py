@@ -3,11 +3,11 @@ BESS and Thermal Energy Storage (TES) components for PyPSA model.
 """
 
 import pypsa
-from pydantic import BaseModel, Field
-from src.components.base import BaseEnergyComponent
+from pydantic import Field
+from .base import BaseEnergyComponent, BaseComponentConfig
 
 
-class BESSComponentConfig(BaseModel):
+class BESSComponentConfig(BaseComponentConfig):
     name: str = "bess"
     bus: str = "b_elec"
     capex_eur_per_kwh: float = Field(default=350.0, ge=0.0)
@@ -25,7 +25,7 @@ class BESSComponentConfig(BaseModel):
     max_capacity_kwh: float = Field(default=50000.0, ge=0.0)
 
 
-class TESComponentConfig(BaseModel):
+class TESComponentConfig(BaseComponentConfig):
     name: str = "tes"
     bus: str = "b_heat_lt"
     capex_eur_per_kwh: float = Field(default=50.0, ge=0.0)
@@ -50,20 +50,11 @@ class BESSComponent(BaseEnergyComponent):
         super().__init__(config.name, config)
         self.bess_config: BESSComponentConfig = config
 
-    def calculate_annualized_capex(self, wacc: float) -> float:
-        r = wacc
-        n = self.bess_config.lifetime_years
-        if r > 0:
-            annuity_factor = (r * (1 + r) ** n) / ((1 + r) ** n - 1)
-        else:
-            annuity_factor = 1.0 / n
-        return float(self.bess_config.capex_eur_per_kwh * annuity_factor + self.bess_config.opex_eur_per_kwh_year)
-
     def build_component(self, network: pypsa.Network, wacc: float = 0.07) -> None:
         bus_bess = f"{self.name}_bus"
         network.add("Bus", bus_bess, carrier="electricity_stored", x=6.8325, y=51.1725)
 
-        capital_cost = self.calculate_annualized_capex(wacc) if self.bess_config.is_extendable else 0.0
+        capital_cost = self.get_capital_cost(wacc)
 
         if self.bess_config.is_extendable:
             network.add(
@@ -136,20 +127,11 @@ class TESComponent(BaseEnergyComponent):
         super().__init__(config.name, config)
         self.tes_config: TESComponentConfig = config
 
-    def calculate_annualized_capex(self, wacc: float) -> float:
-        r = wacc
-        n = self.tes_config.lifetime_years
-        if r > 0:
-            annuity_factor = (r * (1 + r) ** n) / ((1 + r) ** n - 1)
-        else:
-            annuity_factor = 1.0 / n
-        return float(self.tes_config.capex_eur_per_kwh * annuity_factor + self.tes_config.opex_eur_per_kwh_year)
-
     def build_component(self, network: pypsa.Network, wacc: float = 0.07) -> None:
         bus_tes = f"{self.name}_bus"
         network.add("Bus", bus_tes, carrier="heat_stored", x=6.8355, y=51.1710)
 
-        capital_cost = self.calculate_annualized_capex(wacc) if self.tes_config.is_extendable else 0.0
+        capital_cost = self.get_capital_cost(wacc)
 
         if self.tes_config.is_extendable:
             network.add(

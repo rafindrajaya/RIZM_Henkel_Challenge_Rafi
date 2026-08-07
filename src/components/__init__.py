@@ -2,8 +2,8 @@
 Modular OOP Component Package for PyPSA Energy System Architecture.
 """
 
-from src.components.base import BaseEnergyComponent
-from src.components.grid import (
+from .base import BaseEnergyComponent, BaseComponentConfig, calculate_annuity_capex
+from .grid import (
     GridElectricityComponent,
     GridGasComponent,
     GridElectricityConfig,
@@ -13,15 +13,17 @@ from src.components.grid import (
     PVPPAConfig,
     WindPPAConfig,
 )
-from src.components.pv import PVComponent, PVComponentConfig, compute_pv_normalized_yield
-from src.components.chp import GasCHPComponent, CHPComponentConfig
-from src.components.boilers import GasBoilerComponent, EBoilerComponent, SteamHeatExchangerComponent, GasBoilerConfig, EBoilerConfig, SteamHeatExchangerConfig
-from src.components.heat_pump import HTHPComponent, HTHPComponentConfig
-from src.components.storage import BESSComponent, TESComponent, BESSComponentConfig, TESComponentConfig
-from src.components.demand import DemandComponent, DemandConfig
+from .pv import PVComponent, PVComponentConfig, compute_pv_normalized_yield
+from .chp import GasCHPComponent, CHPComponentConfig
+from .boilers import GasBoilerComponent, EBoilerComponent, SteamHeatExchangerComponent, GasBoilerConfig, EBoilerConfig, SteamHeatExchangerConfig
+from .heat_pump import HTHPComponent, HTHPComponentConfig
+from .storage import BESSComponent, TESComponent, BESSComponentConfig, TESComponentConfig
+from .demand import DemandComponent, DemandConfig
 
 __all__ = [
     "BaseEnergyComponent",
+    "BaseComponentConfig",
+    "calculate_annuity_capex",
     "GridElectricityComponent",
     "GridGasComponent",
     "GridElectricityConfig",

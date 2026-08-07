@@ -2,20 +2,20 @@
 Grid import components (Electricity and Natural Gas) for PyPSA model.
 """
 
-import pypsa
-import pandas as pd
 from typing import Optional
-from pydantic import BaseModel
-from src.components.base import BaseEnergyComponent
+import pandas as pd
+import pypsa
+from pydantic import Field
+from .base import BaseEnergyComponent, BaseComponentConfig
 
 
-class GridElectricityConfig(BaseModel):
+class GridElectricityConfig(BaseComponentConfig):
     name: str = "grid_electricity"
     bus: str = "b_elec"
     p_nom: float = 1e6  # High upper bound for grid import capacity (kW)
 
 
-class GridGasConfig(BaseModel):
+class GridGasConfig(BaseComponentConfig):
     name: str = "grid_gas"
     bus: str = "b_gas"
     p_nom: float = 1e6  # High upper bound for gas grid import capacity (kW)
@@ -40,9 +40,6 @@ class GridElectricityComponent(BaseEnergyComponent):
             p_max_pu=1.0,
         )
 
-    def calculate_annualized_capex(self, wacc: float = 0.07) -> float:
-        return 0.0
-
 
 class GridGasComponent(BaseEnergyComponent):
     """Natural gas grid import generator with spot price + CO2 surcharge."""
@@ -63,14 +60,8 @@ class GridGasComponent(BaseEnergyComponent):
             p_max_pu=1.0,
         )
 
-    def calculate_annualized_capex(self, wacc: float) -> float:
-        return 0.0
 
-
-from pydantic import Field
-
-
-class PVPPAConfig(BaseModel):
+class PVPPAConfig(BaseComponentConfig):
     name: str = "pv_ppa"
     bus: str = "b_elec"
     strike_price_eur_per_mwh: float = Field(default=55.0, ge=0.0)      # €55/MWh pay-as-produced strike price
@@ -81,7 +72,7 @@ class PVPPAConfig(BaseModel):
     max_capacity_kw: float = Field(default=50000.0, ge=0.0)
 
 
-class WindPPAConfig(BaseModel):
+class WindPPAConfig(BaseComponentConfig):
     name: str = "wind_ppa"
     bus: str = "b_elec"
     strike_price_eur_per_mwh: float = Field(default=65.0, ge=0.0)      # €65/MWh pay-as-produced strike price
@@ -101,12 +92,9 @@ class PVPPAComponent(BaseEnergyComponent):
         self.ppa_config: PVPPAConfig = cfg
         self.pv_profile = pv_profile
 
-    def calculate_annualized_capex(self, wacc: float = 0.07) -> float:
-        return float(self.ppa_config.annual_fee_eur_per_kw_year)
-
     def build_component(self, network: pypsa.Network, wacc: float = 0.07) -> None:
         marginal_cost_kwh = self.ppa_config.strike_price_eur_per_mwh / 1000.0
-        capital_cost = self.calculate_annualized_capex(wacc) if self.ppa_config.is_extendable else 0.0
+        capital_cost = self.get_capital_cost(wacc)
 
         if self.ppa_config.is_extendable:
             network.add(
@@ -141,12 +129,9 @@ class WindPPAComponent(BaseEnergyComponent):
         self.ppa_config: WindPPAConfig = cfg
         self.wind_profile = wind_profile
 
-    def calculate_annualized_capex(self, wacc: float = 0.07) -> float:
-        return float(self.ppa_config.annual_fee_eur_per_kw_year)
-
     def build_component(self, network: pypsa.Network, wacc: float = 0.07) -> None:
         marginal_cost_kwh = self.ppa_config.strike_price_eur_per_mwh / 1000.0
-        capital_cost = self.calculate_annualized_capex(wacc) if self.ppa_config.is_extendable else 0.0
+        capital_cost = self.get_capital_cost(wacc)
 
         if self.ppa_config.is_extendable:
             network.add(
@@ -170,4 +155,3 @@ class WindPPAComponent(BaseEnergyComponent):
                 p_max_pu=self.wind_profile.values,
                 marginal_cost=marginal_cost_kwh,
             )
-

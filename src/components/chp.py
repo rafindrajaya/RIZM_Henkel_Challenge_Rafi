@@ -3,11 +3,11 @@ Gas Combined Heat and Power (CHP) component for PyPSA model.
 """
 
 import pypsa
-from pydantic import BaseModel, Field
-from src.components.base import BaseEnergyComponent
+from pydantic import Field
+from .base import BaseEnergyComponent, BaseComponentConfig
 
 
-class CHPComponentConfig(BaseModel):
+class CHPComponentConfig(BaseComponentConfig):
     name: str = "gas_chp"
     bus_in: str = "b_gas"
     bus_el: str = "b_elec"
@@ -30,22 +30,12 @@ class GasCHPComponent(BaseEnergyComponent):
         super().__init__(config.name, config)
         self.chp_config: CHPComponentConfig = config
 
-    def calculate_annualized_capex(self, wacc: float) -> float:
-        r = wacc
-        n = self.chp_config.lifetime_years
-        if r > 0:
-            annuity_factor = (r * (1 + r) ** n) / ((1 + r) ** n - 1)
-        else:
-            annuity_factor = 1.0 / n
-        eac = self.chp_config.capex_eur_per_kw_el * annuity_factor + self.chp_config.opex_eur_per_kw_el_year
-        return float(eac)
-
     def build_component(self, network: pypsa.Network, wacc: float = 0.07) -> None:
         # In PyPSA Link, efficiency is output/input for bus1.
         # bus0 = b_gas (input)
         # bus1 = b_elec (output 1) -> efficiency = eta_el
         # bus2 = b_steam_ht (output 2) -> efficiency2 = eta_th
-        capital_cost = self.calculate_annualized_capex(wacc) if self.chp_config.is_extendable else 0.0
+        capital_cost = self.get_capital_cost(wacc)
 
         if self.chp_config.is_extendable:
             network.add(

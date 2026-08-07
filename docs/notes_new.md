@@ -28,7 +28,7 @@
 
 
 ## Questions
-- 
+- is calculate_annualized_capex function important to be in all the component classes or just defined in one module and used in the different classes with different input based on the config? 
 
 
 ### Notes on content

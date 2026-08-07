@@ -6,7 +6,7 @@ import pypsa
 import pandas as pd
 from typing import Optional
 from pydantic import BaseModel, Field
-from src.components.base import BaseEnergyComponent
+from .base import BaseEnergyComponent, BaseComponentConfig
 
 
 import numpy as np
@@ -15,7 +15,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class PVComponentConfig(BaseModel):
+class PVComponentConfig(BaseComponentConfig):
     name: str = "solar_pv"
     bus: str = "b_elec"
     capex_eur_per_kw: float = Field(default=800.0, ge=0.0)
@@ -88,18 +88,8 @@ class PVComponent(BaseEnergyComponent):
             ghi = np.asarray(df_solar["ghi"], dtype=float) / 1000.0
             return np.clip(ghi, 0.0, 1.0)
 
-    def calculate_annualized_capex(self, wacc: float) -> float:
-        r = wacc
-        n = self.pv_config.lifetime_years
-        if r > 0:
-            annuity_factor = (r * (1 + r) ** n) / ((1 + r) ** n - 1)
-        else:
-            annuity_factor = 1.0 / n
-        eac = self.pv_config.capex_eur_per_kw * annuity_factor + self.pv_config.opex_eur_per_kw_year
-        return float(eac)
-
     def build_component(self, network: pypsa.Network, wacc: float = 0.07) -> None:
-        capital_cost = self.calculate_annualized_capex(wacc) if self.pv_config.is_extendable else 0.0
+        capital_cost = self.get_capital_cost(wacc)
 
         if self.pv_config.is_extendable:
             network.add(

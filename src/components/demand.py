@@ -3,13 +3,13 @@ Industrial baseload demand sinks (Loads) for PyPSA model.
 """
 
 from typing import Optional
-
 import pypsa
-from pydantic import BaseModel, Field
-from src.components.base import BaseEnergyComponent
+from pydantic import Field
+from .base import BaseEnergyComponent, BaseComponentConfig
 
 
-class DemandConfig(BaseModel):
+class DemandConfig(BaseComponentConfig):
+    name: str = "demand_sinks"
     elec_demand_mw: float = Field(default=60.0, ge=0.0, description="Electrical continuous baseload demand in MW")
     steam_demand_mw_th: float = Field(default=160.0, ge=0.0, description="High-temp steam demand in MW_th")
     heat_demand_mw_th: float = Field(default=60.0, ge=0.0, description="Mid-temp process heat demand in MW_th")
@@ -20,11 +20,8 @@ class DemandComponent(BaseEnergyComponent):
 
     def __init__(self, config: Optional[DemandConfig] = None):
         cfg = config or DemandConfig()
-        super().__init__("demand_sinks", cfg)
+        super().__init__(cfg.name, cfg)
         self.demand_config: DemandConfig = cfg
-
-    def calculate_annualized_capex(self, wacc: float = 0.07) -> float:
-        return 0.0
 
     def build_component(self, network: pypsa.Network, wacc: float = 0.07) -> None:
         # Electricity demand (kW)
