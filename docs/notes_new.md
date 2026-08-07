@@ -20,7 +20,7 @@
 - Remove the fermi baseline calculation and just compare operation hub with existing compoenents and decision hub that includes the option of investing in battery, PPA PV, PPA Wind, TES
 
 ## TODO 2:
-
+- Add a summary of the data-drive energy business use cases, what I learned from there
 
 
 

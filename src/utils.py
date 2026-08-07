@@ -10,7 +10,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 
 try:
     import plotly.graph_objects as go
@@ -44,7 +44,8 @@ def plot_dispatch_stacks(results: Dict[str, Any], title: str = "PyPSA Multi-Carr
 
     # 1. Electricity Bus (b_elec)
     ax0 = axes[0]
-    elec_gen = n.generators_t.p[["grid_electricity", "solar_pv"]] if "solar_pv" in n.generators_t.p.columns else n.generators_t.p[["grid_electricity"]]
+    elec_cols = [c for c in ["grid_electricity", "solar_pv", "pv_ppa", "wind_ppa"] if c in n.generators_t.p.columns]
+    elec_gen = n.generators_t.p[elec_cols] if elec_cols else pd.DataFrame(index=n.snapshots)
     elec_gen.plot(kind="area", stacked=True, ax=ax0, alpha=0.8, color=[CARRIER_COLORS.get(c, "#333333") for c in elec_gen.columns])
     ax0.set_title("Electricity Supply Stack (b_elec) [kW]")
     ax0.set_ylabel("Power [kW]")
@@ -103,22 +104,30 @@ def plot_dispatch_stacks_interactive(results: Dict[str, Any], title: str = "Inte
         fig.add_trace(go.Scatter(x=snapshots, y=n.generators_t.p["grid_electricity"], name="Grid Elec", stackgroup="elec", fillcolor="#3182bd"), row=1, col=1)
     if "solar_pv" in n.generators_t.p.columns:
         fig.add_trace(go.Scatter(x=snapshots, y=n.generators_t.p["solar_pv"], name="Solar PV", stackgroup="elec", fillcolor="#fec44f"), row=1, col=1)
+    if "pv_ppa" in n.generators_t.p.columns:
+        fig.add_trace(go.Scatter(x=snapshots, y=n.generators_t.p["pv_ppa"], name="PV PPA", stackgroup="elec", fillcolor="#ffbb78"), row=1, col=1)
+    if "wind_ppa" in n.generators_t.p.columns:
+        fig.add_trace(go.Scatter(x=snapshots, y=n.generators_t.p["wind_ppa"], name="Wind PPA", stackgroup="elec", fillcolor="#98df8a"), row=1, col=1)
     if "gas_chp" in n.links_t.p1.columns:
-        fig.add_trace(go.Scatter(x=snapshots, y=n.links_t.p1["gas_chp"], name="CHP Elec", stackgroup="elec", fillcolor="#e6550d"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=snapshots, y=np.abs(n.links_t.p1["gas_chp"]), name="CHP Elec", stackgroup="elec", fillcolor="#e6550d"), row=1, col=1)
+    if "bess_discharger" in n.links_t.p1.columns:
+        fig.add_trace(go.Scatter(x=snapshots, y=np.abs(n.links_t.p1["bess_discharger"]), name="BESS Discharge", stackgroup="elec", fillcolor="#9ecae1"), row=1, col=1)
 
     # 2. HT Steam
     if "gas_chp" in n.links_t.p2.columns:
-        fig.add_trace(go.Scatter(x=snapshots, y=n.links_t.p2["gas_chp"], name="CHP Steam", stackgroup="steam", fillcolor="#e6550d"), row=2, col=1)
+        fig.add_trace(go.Scatter(x=snapshots, y=np.abs(n.links_t.p2["gas_chp"]), name="CHP Steam", stackgroup="steam", fillcolor="#e6550d"), row=2, col=1)
     if "gas_boiler" in n.links_t.p1.columns:
-        fig.add_trace(go.Scatter(x=snapshots, y=n.links_t.p1["gas_boiler"], name="Gas Boiler", stackgroup="steam", fillcolor="#fd8d3c"), row=2, col=1)
+        fig.add_trace(go.Scatter(x=snapshots, y=np.abs(n.links_t.p1["gas_boiler"]), name="Gas Boiler", stackgroup="steam", fillcolor="#fd8d3c"), row=2, col=1)
     if "electric_boiler" in n.links_t.p1.columns:
-        fig.add_trace(go.Scatter(x=snapshots, y=n.links_t.p1["electric_boiler"], name="E-Boiler", stackgroup="steam", fillcolor="#74c476"), row=2, col=1)
+        fig.add_trace(go.Scatter(x=snapshots, y=np.abs(n.links_t.p1["electric_boiler"]), name="E-Boiler", stackgroup="steam", fillcolor="#74c476"), row=2, col=1)
 
     # 3. LT Heat
     if "heat_pump" in n.links_t.p1.columns:
-        fig.add_trace(go.Scatter(x=snapshots, y=n.links_t.p1["heat_pump"], name="HTHP Heat", stackgroup="heat", fillcolor="#2ca02c"), row=3, col=1)
+        fig.add_trace(go.Scatter(x=snapshots, y=np.abs(n.links_t.p1["heat_pump"]), name="HTHP Heat", stackgroup="heat", fillcolor="#2ca02c"), row=3, col=1)
     if "steam_to_heat_exchanger" in n.links_t.p1.columns:
-        fig.add_trace(go.Scatter(x=snapshots, y=n.links_t.p1["steam_to_heat_exchanger"], name="Steam-HX Heat", stackgroup="heat", fillcolor="#bcbd22"), row=3, col=1)
+        fig.add_trace(go.Scatter(x=snapshots, y=np.abs(n.links_t.p1["steam_to_heat_exchanger"]), name="Steam-HX Heat", stackgroup="heat", fillcolor="#bcbd22"), row=3, col=1)
+    if "tes_discharger" in n.links_t.p1.columns:
+        fig.add_trace(go.Scatter(x=snapshots, y=np.abs(n.links_t.p1["tes_discharger"]), name="TES Discharge", stackgroup="heat", fillcolor="#a1d99b"), row=3, col=1)
 
     fig.update_layout(height=800, title_text=title, template="plotly_white", hovermode="x unified")
     return fig
@@ -308,13 +317,86 @@ def get_period_effective_tonnage(res: Any, annual_tonnage: float = 450000.0) -> 
     return annual_tonnage
 
 
+def calculate_curtailment_metrics(res: Dict[str, Any]) -> Tuple[float, float]:
+    """Calculates curtailed electricity (%) and curtailed heat (%) from PyPSA network results."""
+    if not isinstance(res, dict) or "network" not in res:
+        return 0.0, 0.0
+
+    n = res["network"]
+
+    # 1. Calculate Electricity Generation & Curtailment
+    tot_elec_generated = 0.0
+    tot_elec_curtailed = 0.0
+
+    if hasattr(n, "generators_t") and hasattr(n.generators_t, "p"):
+        for gen in n.generators.index:
+            if gen in ["grid_electricity", "grid_gas"] or gen.endswith("_dump"):
+                continue
+            p_actual = float(n.generators_t.p[gen].sum()) if gen in n.generators_t.p.columns else 0.0
+            p_opt = float(n.generators.loc[gen, "p_nom_opt" if "p_nom_opt" in n.generators.columns else "p_nom"])
+            if hasattr(n.generators_t, "p_max_pu") and gen in n.generators_t.p_max_pu.columns:
+                p_potential = float((n.generators_t.p_max_pu[gen] * p_opt).sum())
+            else:
+                p_potential = p_actual
+
+            tot_elec_generated += p_potential
+            curt = max(0.0, p_potential - p_actual)
+            tot_elec_curtailed += curt
+
+        if "grid_electricity" in n.generators_t.p.columns:
+            tot_elec_generated += float(n.generators_t.p["grid_electricity"].sum())
+
+    if hasattr(n, "links_t") and hasattr(n.links_t, "p0") and "gas_chp" in n.links.index:
+        eta_el = float(n.links.loc["gas_chp", "efficiency"]) if "efficiency" in n.links.columns else 0.25
+        chp_gas_in = float(n.links_t.p0["gas_chp"].sum()) if "gas_chp" in n.links_t.p0.columns else 0.0
+        tot_elec_generated += chp_gas_in * eta_el
+
+    elec_curtailment_pct = (tot_elec_curtailed / tot_elec_generated * 100.0) if tot_elec_generated > 0 else 0.0
+
+    # 2. Calculate Thermal Heat & Steam Generation & Curtailment
+    tot_heat_generated = 0.0
+    tot_heat_curtailed = 0.0
+
+    if hasattr(n, "generators_t") and hasattr(n.generators_t, "p"):
+        for dump_gen in ["steam_dump", "heat_dump"]:
+            if dump_gen in n.generators_t.p.columns:
+                dump_val = -float(n.generators_t.p[dump_gen].sum())
+                if dump_val > 0:
+                    tot_heat_curtailed += dump_val
+
+    if hasattr(n, "links_t") and hasattr(n.links_t, "p0"):
+        if "gas_chp" in n.links.index:
+            eta_th = float(n.links.loc["gas_chp", "efficiency2"]) if "efficiency2" in n.links.columns else 0.50
+            chp_gas_in = float(n.links_t.p0["gas_chp"].sum()) if "gas_chp" in n.links_t.p0.columns else 0.0
+            tot_heat_generated += chp_gas_in * eta_th
+
+        if "gas_boiler" in n.links.index:
+            eta_th = float(n.links.loc["gas_boiler", "efficiency"]) if "efficiency" in n.links.columns else 0.90
+            boiler_gas_in = float(n.links_t.p0["gas_boiler"].sum()) if "gas_boiler" in n.links_t.p0.columns else 0.0
+            tot_heat_generated += boiler_gas_in * eta_th
+
+        if "electric_boiler" in n.links.index:
+            eboiler_out = float(n.links_t.p1["electric_boiler"].sum()) if "electric_boiler" in n.links_t.p1.columns else 0.0
+            tot_heat_generated += eboiler_out
+
+        if "heat_pump" in n.links.index:
+            hthp_out = float(n.links_t.p1["heat_pump"].sum()) if "heat_pump" in n.links_t.p1.columns else 0.0
+            tot_heat_generated += hthp_out
+
+    tot_heat_potential = tot_heat_generated + tot_heat_curtailed
+    heat_curtailment_pct = (tot_heat_curtailed / tot_heat_potential * 100.0) if tot_heat_potential > 0 else 0.0
+
+    return round(elec_curtailment_pct, 2), round(heat_curtailment_pct, 2)
+
+
 def create_summary_dataframe(results_dict: Dict[str, Dict[str, Any]], annual_tonnage: float = 450000.0) -> pd.DataFrame:
-    """Compiles scenario results into a clean financial comparison table (EUR/ton, OPEX, CAPEX, CO2)."""
+    """Compiles scenario results into a clean financial comparison table (EUR/ton, OPEX, CAPEX, CO2, Curtailment)."""
     rows = []
     for scenario_name, res in results_dict.items():
         tot_cost = res["total_cost_eur"]
         eff_tonnage = get_period_effective_tonnage(res, annual_tonnage=annual_tonnage)
         cost_per_ton = tot_cost / eff_tonnage if eff_tonnage > 0 else 0.0
+        elec_curt_pct, heat_curt_pct = calculate_curtailment_metrics(res)
         rows.append({
             "Scenario": scenario_name,
             "Total Cost (EUR)": tot_cost,
@@ -323,6 +405,8 @@ def create_summary_dataframe(results_dict: Dict[str, Dict[str, Any]], annual_ton
             "Annualized CAPEX (EUR)": res["capex_annualized_eur"],
             "Emissions (tCO2)": res["emissions_t_co2"],
             "Peak Grid Demand (MW)": res["peak_grid_demand_kw"] / 1000.0,
+            "Curtailed Elec (%)": elec_curt_pct,
+            "Curtailed Heat (%)": heat_curt_pct,
             "Sec19 Compliant": not res["sec19_violation"],
         })
 
@@ -415,14 +499,16 @@ def create_pypsa_asset_sizing_table(results_or_net: Any) -> pd.DataFrame:
     if hasattr(n, "generators") and not n.generators.empty:
         for name, row in n.generators.iterrows():
             p_opt = float(getattr(row, "p_nom_opt", getattr(row, "p_nom", 0.0)))
-            if p_opt > 0 and name != "grid_electricity":
-                asset_rows.append({"Asset Component": name.upper(), "Optimal Sizing Capacity": f"{p_opt:,.2f}", "Unit": "kWp"})
+            # Exclude grid imports and emergency dump generators
+            if p_opt > 0 and name not in ["grid_electricity", "grid_gas"] and not name.endswith("_dump"):
+                asset_rows.append({"Asset Component": name.upper(), "Optimal Sizing Capacity": f"{p_opt:,.2f}", "Unit": "kWp" if "pv" in name.lower() else "kW"})
 
     if hasattr(n, "links") and not n.links.empty:
         for name, row in n.links.iterrows():
             p_opt = float(getattr(row, "p_nom_opt", getattr(row, "p_nom", 0.0)))
             if p_opt > 0 and name != "steam_to_heat_exchanger":
-                asset_rows.append({"Asset Component": name.upper(), "Optimal Sizing Capacity": f"{p_opt:,.2f}", "Unit": "kW_th"})
+                unit = "kW" if "bess" in name.lower() else "kW_th"
+                asset_rows.append({"Asset Component": name.upper(), "Optimal Sizing Capacity": f"{p_opt:,.2f}", "Unit": unit})
 
     if hasattr(n, "stores") and not n.stores.empty:
         for name, row in n.stores.iterrows():
@@ -609,9 +695,18 @@ def plot_network_schematic(
     # Helper function to check component capacity from PyPSA network
     def get_component_capacity(comp_type: str, name: str) -> float:
         df = getattr(n, comp_type, pd.DataFrame())
-        if df.empty or name not in df.index:
+        if df.empty:
             return 0.0
-        row = df.loc[name]
+
+        target_name = name
+        if name not in df.index:
+            alias = name.replace("_store", "").replace("_gen", "")
+            if alias in df.index:
+                target_name = alias
+            else:
+                return 0.0
+
+        row = df.loc[target_name]
 
         is_ext = bool(row.get("p_nom_extendable", False)) if comp_type != "stores" else bool(row.get("e_nom_extendable", False))
 
@@ -628,9 +723,11 @@ def plot_network_schematic(
     # Layout node templates
     nodes = {
         # Supply Generators
-        "grid_gas": {"pos": (1, 8), "color": "#6baed6", "label": "Grid Gas\n(Import)"},
-        "grid_electricity": {"pos": (1, 5), "color": "#3182bd", "label": "Grid Power\n(Import)"},
-        "solar_pv": {"pos": (1, 2), "color": "#fec44f", "type": "generators", "prefix": "Solar PV"},
+        "grid_gas": {"pos": (1, 8.5), "color": "#6baed6", "label": "Grid Gas\n(Import)"},
+        "grid_electricity": {"pos": (1, 6.2), "color": "#3182bd", "label": "Grid Power\n(Import)"},
+        "pv_ppa": {"pos": (1, 4.2), "color": "#ffbb78", "type": "generators", "prefix": "Solar PPA", "unit": "MW"},
+        "solar_pv": {"pos": (1, 2.2), "color": "#fec44f", "type": "generators", "prefix": "Rooftop PV", "unit": "MWp"},
+        "wind_ppa": {"pos": (1, 0.2), "color": "#98df8a", "type": "generators", "prefix": "Wind PPA", "unit": "MW"},
 
         # Central Energy Buses
         "b_gas": {"pos": (4, 8), "color": "#6baed6", "label": "Gas Bus\n[b_gas]", "is_bus": True},
@@ -646,8 +743,8 @@ def plot_network_schematic(
         "steam_to_heat_exchanger": {"pos": (7, 4.5), "color": "#98df8a", "type": "links", "label": "Steam Exchanger\n(95% Eff)"},
 
         # Storage & Demand Sinks
-        "bess_store": {"pos": (4, 3.5), "color": "#9ecae1", "type": "stores", "prefix": "BESS Storage", "unit": "MWh"},
-        "tes_store": {"pos": (7, 1), "color": "#a1d99b", "type": "stores", "prefix": "TES Storage", "unit": "MWh_th"},
+        "bess": {"pos": (4, 3.5), "color": "#9ecae1", "type": "stores", "prefix": "BESS Storage", "unit": "MWh"},
+        "tes": {"pos": (7, 1), "color": "#a1d99b", "type": "stores", "prefix": "TES Storage", "unit": "MWh_th"},
         "demand_elec": {"pos": (10, 5), "color": "#1f77b4", "label": "Elec Demand\n(60 MW_el)"},
         "demand_steam": {"pos": (10, 6.5), "color": "#d62728", "label": "Steam Demand\n(160 MW_th)"},
         "demand_heat": {"pos": (10, 2.5), "color": "#2ca02c", "label": "Heat Demand\n(60 MW_th)"},
@@ -665,7 +762,9 @@ def plot_network_schematic(
         elif "type" in info:
             cap = get_component_capacity(info["type"], name)
             if cap > 1e-3:
-                row = n.links.loc[name] if info["type"] == "links" else n.generators.loc[name] if info["type"] == "generators" else n.stores.loc[name]
+                comp_df = getattr(n, info["type"], pd.DataFrame())
+                target_idx = name if name in comp_df.index else name.replace("_store", "").replace("_gen", "")
+                row = comp_df.loc[target_idx]
                 # Format label dynamically with exact PyPSA capacity
                 if info.get("custom_chp", False):
                     eta_el = float(row.get("efficiency", 0.25))
@@ -679,7 +778,12 @@ def plot_network_schematic(
                     info["label"] = f"Gas Boiler\n({boiler_th/1000:.2f} MW_th)"
                 elif "prefix" in info:
                     unit = info.get("unit", "MW")
-                    info["label"] = f"{info['prefix']}\n({cap/1000:.2f} {unit})"
+                    if info["type"] == "stores":
+                        display_val = cap / 1000.0 if cap >= 1000.0 else cap
+                        unit_str = unit if cap >= 1000.0 else unit.replace("MWh", "kWh")
+                        info["label"] = f"{info['prefix']}\n({display_val:.2f} {unit_str})"
+                    else:
+                        info["label"] = f"{info['prefix']}\n({cap/1000:.2f} {unit})"
                 active_nodes[name] = info
 
     # Draw boxes for active nodes
@@ -699,7 +803,9 @@ def plot_network_schematic(
     connections = [
         ("grid_gas", "b_gas"),
         ("grid_electricity", "b_elec"),
+        ("pv_ppa", "b_elec"),
         ("solar_pv", "b_elec"),
+        ("wind_ppa", "b_elec"),
         ("b_gas", "gas_chp"),
         ("b_gas", "gas_boiler"),
         ("gas_chp", "b_steam_ht"),
@@ -714,8 +820,8 @@ def plot_network_schematic(
         ("b_elec", "demand_elec"),
         ("b_steam_ht", "demand_steam"),
         ("b_heat_lt", "demand_heat"),
-        ("b_elec", "bess_store"),
-        ("b_heat_lt", "tes_store"),
+        ("b_elec", "bess"),
+        ("b_heat_lt", "tes"),
     ]
 
     for src, dst in connections:

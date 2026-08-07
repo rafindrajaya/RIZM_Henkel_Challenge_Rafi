@@ -33,6 +33,8 @@ logger = logging.getLogger(__name__)
 from .components import (
     GridElectricityComponent,
     GridGasComponent,
+    GridElectricityConfig,
+    GridGasConfig,
     PVPPAComponent,
     WindPPAComponent,
     PVPPAConfig,
@@ -118,6 +120,8 @@ class FacilityProjectConfig(BaseModel):
     end_time: str = Field(default="08/01/2025", description="End date in DD/MM/YYYY format")
     fixed_components_sizing: FixedSizingConfig = Field(default_factory=FixedSizingConfig)
     variable_components_sizing: VariableSizingConfig = Field(default_factory=VariableSizingConfig)
+    pv_ppa_strike_price_eur_per_mwh: Optional[float] = Field(default=None, ge=0.0, description="Optional PV PPA strike price override (€/MWh)")
+    wind_ppa_strike_price_eur_per_mwh: Optional[float] = Field(default=None, ge=0.0, description="Optional Wind PPA strike price override (€/MWh)")
     co2_tax_eur_per_ton: float = Field(default=85.0, ge=0.0)
     enable_sec19_protection: bool = Field(default=True)
     wacc: float = Field(default=0.07, ge=0.0, le=0.30)
@@ -283,6 +287,12 @@ class HenkelEnergySystem:
         comp_dir = components_dir or DEFAULT_COMPONENTS_DIR
         self.comp_cfg = load_component_config(comp_dir)
 
+        # Apply PPA strike price overrides from FacilityProjectConfig if specified
+        if self.config.pv_ppa_strike_price_eur_per_mwh is not None:
+            self.comp_cfg.pv_ppa.strike_price_eur_per_mwh = self.config.pv_ppa_strike_price_eur_per_mwh
+        if self.config.wind_ppa_strike_price_eur_per_mwh is not None:
+            self.comp_cfg.wind_ppa.strike_price_eur_per_mwh = self.config.wind_ppa_strike_price_eur_per_mwh
+
         # PyPSA network and solution state
         self.network: Optional[pypsa.Network] = None
         self.results: Optional[Dict[str, Any]] = None
@@ -332,12 +342,18 @@ class HenkelEnergySystem:
         n.add("Bus", "b_heat_lt", carrier="heat_lt", x=6.8350, y=51.1715)
 
         # 1. Grid Electricity and Natural Gas Import Components
+        grid_p_nom = 60000.0 if self.enable_sec19_protection else 1e6
+        grid_elec_cfg = GridElectricityConfig(p_nom=grid_p_nom)
+
         if self.enable_sec19_protection:
             grid_elec_cost_kwh = np.asarray(df_m["elec_total_sec19_eur_mwh"], dtype=float) / 1000.0
         else:
             grid_elec_cost_kwh = np.asarray(df_m["elec_total_standard_eur_mwh"], dtype=float) / 1000.0
 
-        grid_elec = GridElectricityComponent(price_series=pd.Series(grid_elec_cost_kwh, index=df_m.index))
+        grid_elec = GridElectricityComponent(
+            price_series=pd.Series(grid_elec_cost_kwh, index=df_m.index),
+            config=grid_elec_cfg,
+        )
         grid_elec.build_component(n, wacc=self.wacc)
         if self.co2_tax_eur_per_ton:
             gas_cost_eur_kwh = (
@@ -594,9 +610,9 @@ class HenkelEnergySystem:
         elec_mwh = float(grid_elec_p.sum()) / 1000.0
         emissions_t_co2 = (gas_mwh * GAS_EMISSION_FACTOR_T_PER_MWH) + (elec_mwh * GRID_ELEC_EMISSION_FACTOR_T_PER_MWH)
 
-        # Sec19 peak grid demand check
+        # Sec19 peak grid demand check & audit verification
         peak_grid_kw = float(grid_elec_p.max())
-        sec19_violation = peak_grid_kw > 60000.0
+        sec19_violation = peak_grid_kw > 60000.0 + 1e-3
 
         # Optimal sizing dictionary
         optimal_capacities = {}

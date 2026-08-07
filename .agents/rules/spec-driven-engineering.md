@@ -41,7 +41,7 @@ trigger: always_on
 * When you have finished a task, create a .md file that summarizes what you have done so that every agent working in the repo /docs folder in order for me to understand the status of the repo. Follow the convention of the existing progress report in the folder.
 
 ### Rule 7: Confirmation before implimentation 
-* Whenever I prompt a query or task, always confirm your plan and idea of action first before implementation. 
+* Whenever I prompt a query or task, always confirm your plan and idea of action first before implementation for every prompt or query even though it is in the same chat. 
 
 ### Rule 8: NEVER MAKE ANY CHANGES TO /Users/mrafiindrajaya/Desktop/Github Projects/RIZM_challenge_Rafi/challenge.ipynb
 * Whenever I ask an inquiry related to the notebook that is to be implemented in the notebook, just answer in the chatbox. Don't ever make changes to the notebook!
