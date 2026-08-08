@@ -17,4 +17,4 @@ azimuth_deg = 180.0                 # South-facing
 albedo = 0.2                        # Urban rooftop ground reflectance
 
 # Spatial constraint (from Google Earth analysis of Henkel Holthausen rooftops)
-max_capacity_kw = 25000.0     # 25 MWp estimated maximum rooftop area
+max_capacity_kw = 1000.0     # 1 MWp estimated maximum rooftop area (2 hectares)

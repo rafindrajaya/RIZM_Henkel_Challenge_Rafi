@@ -6,6 +6,7 @@ Provides interactive Plotly dashboards (for Jupyter Notebooks) alongside matplot
 - .agent/skills/pypsa-asset-economics (diverging net margins, LCOE/LCOH calculation, Sec19 grid fee protection)
 """
 
+import warnings
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -37,57 +38,257 @@ CARRIER_COLORS = {
 }
 
 
-def plot_dispatch_stacks(results: Dict[str, Any], title: str = "PyPSA Multi-Carrier Dispatch Stack") -> plt.Figure:
-    """Generates a 3-panel matplotlib figure showing dispatch for electricity, HT steam, and LT heat."""
+def _slice_snapshots_by_window(
+    n: Any,
+    start_time: Optional[str] = None,
+    duration_days: float = 7.0,
+    config: Optional[Any] = None,
+) -> pd.DatetimeIndex:
+    """
+    Resolves snapshot datetime index sliced for a duration (default 7 days).
+    Validates input date format, issues non-crashing warning if out of bounds,
+    and falls back to config.start_time or network first snapshot.
+    """
+    snapshots = n.snapshots
+    if len(snapshots) == 0:
+        return snapshots
+
+    # 1. Determine default starting time
+    default_start = None
+    if config is not None and hasattr(config, "start_time") and config.start_time:
+        try:
+            default_start = pd.to_datetime(config.start_time, dayfirst=True)
+        except Exception:
+            pass
+
+    if default_start is None:
+        default_start = snapshots[0]
+
+    # Ensure default_start is within snapshot range, else use snapshots[0]
+    if default_start < snapshots[0] or default_start > snapshots[-1]:
+        default_start = snapshots[0]
+
+    target_start = default_start
+
+    # 2. Parse user-provided start_time if given
+    if start_time is not None:
+        try:
+            parsed_dt = pd.to_datetime(start_time, dayfirst=True)
+            # Check if within optimization bounds
+            if parsed_dt < snapshots[0] or parsed_dt > snapshots[-1]:
+                warnings.warn(
+                    f"Specified start_time '{start_time}' ({parsed_dt}) is outside the optimization period "
+                    f"[{snapshots[0]} to {snapshots[-1]}]. Falling back to default start_time '{default_start}'.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                target_start = default_start
+            else:
+                target_start = parsed_dt
+        except Exception as e:
+            warnings.warn(
+                f"Could not parse start_time '{start_time}' ({e}). "
+                f"Falling back to default start_time '{default_start}'.",
+                UserWarning,
+                stacklevel=2,
+            )
+            target_start = default_start
+
+    # 3. Calculate end time based on duration
+    target_end = target_start + pd.Timedelta(days=duration_days)
+
+    # Slice snapshots
+    sliced = snapshots[(snapshots >= target_start) & (snapshots <= target_end)]
+    if len(sliced) == 0:
+        warnings.warn(
+            f"No snapshots found between {target_start} and {target_end}. Returning full snapshots.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return snapshots
+    return sliced
+
+
+def plot_dispatch_stacks(
+    results: Dict[str, Any],
+    title: str = "PyPSA Multi-Carrier Dispatch Stack",
+    start_time: Optional[str] = None,
+    duration_days: float = 7.0,
+) -> plt.Figure:
+    """
+    Generates a static 3-panel Matplotlib line plot figure showing dispatch profiles and load demand
+    for electricity, high-temperature steam, and low-temperature process heat.
+    Includes complete legend coverage for all activated components.
+    """
     n = results["network"]
-    fig, axes = plt.subplots(3, 1, figsize=(14, 10), sharex=True)
+    config = results.get("config", None)
+    snapshots = _slice_snapshots_by_window(n, start_time=start_time, duration_days=duration_days, config=config)
 
+    fig, axes = plt.subplots(3, 1, figsize=(15, 11), sharex=True)
+
+    # ---------------------------------------------------------
     # 1. Electricity Bus (b_elec)
+    # ---------------------------------------------------------
     ax0 = axes[0]
-    elec_cols = [c for c in ["grid_electricity", "solar_pv", "pv_ppa", "wind_ppa"] if c in n.generators_t.p.columns]
-    elec_gen = n.generators_t.p[elec_cols] if elec_cols else pd.DataFrame(index=n.snapshots)
-    elec_gen.plot(kind="area", stacked=True, ax=ax0, alpha=0.8, color=[CARRIER_COLORS.get(c, "#333333") for c in elec_gen.columns])
-    ax0.set_title("Electricity Supply Stack (b_elec) [kW]")
-    ax0.set_ylabel("Power [kW]")
+    elec_gen_candidates = [
+        ("grid_electricity", "Grid Electricity", "#3182bd"),
+        ("solar_pv", "Solar PV", "#fec44f"),
+        ("pv_ppa", "PV PPA", "#ffbb78"),
+        ("wind_ppa", "Wind PPA", "#98df8a"),
+    ]
+    for gen_id, label_name, color in elec_gen_candidates:
+        if hasattr(n, "generators") and gen_id in n.generators.index:
+            if hasattr(n, "generators_t") and hasattr(n.generators_t, "p") and gen_id in n.generators_t.p.columns:
+                series = n.generators_t.p.loc[snapshots, gen_id]
+            else:
+                series = pd.Series(0.0, index=snapshots)
+            ax0.plot(snapshots, series, label=f"{label_name} [kW]", color=color, linewidth=2.0)
+
+    if hasattr(n, "links") and "gas_chp" in n.links.index:
+        if hasattr(n, "links_t") and hasattr(n.links_t, "p1") and "gas_chp" in n.links_t.p1.columns:
+            chp_elec = np.abs(n.links_t.p1.loc[snapshots, "gas_chp"])
+        else:
+            chp_elec = pd.Series(0.0, index=snapshots)
+        ax0.plot(snapshots, chp_elec, label="CHP Electricity [kW]", color="#e6550d", linewidth=2.0)
+
+    if hasattr(n, "links") and "bess_discharger" in n.links.index:
+        if hasattr(n, "links_t") and hasattr(n.links_t, "p1") and "bess_discharger" in n.links_t.p1.columns:
+            bess_p = np.abs(n.links_t.p1.loc[snapshots, "bess_discharger"])
+        else:
+            bess_p = pd.Series(0.0, index=snapshots)
+        ax0.plot(snapshots, bess_p, label="BESS Discharge [kW]", color="#9ecae1", linewidth=2.0)
+
+    if hasattr(n, "loads") and "demand_elec" in n.loads.index:
+        if hasattr(n, "loads_t") and hasattr(n.loads_t, "p_set") and "demand_elec" in n.loads_t.p_set.columns:
+            demand_e = n.loads_t.p_set.loc[snapshots, "demand_elec"]
+        elif hasattr(n, "loads_t") and hasattr(n.loads_t, "p") and "demand_elec" in n.loads_t.p.columns:
+            demand_e = n.loads_t.p.loc[snapshots, "demand_elec"]
+        else:
+            demand_e = pd.Series(0.0, index=snapshots)
+        ax0.plot(snapshots, demand_e, label="Demand Elec [kW]", color="black", linestyle="--", linewidth=2.5)
+
+    ax0.set_title("Electricity Supply & Demand Dynamics (b_elec) [kW]", fontsize=12, fontweight="bold")
+    ax0.set_ylabel("Power [kW]", fontsize=10, fontweight="bold")
     ax0.grid(True, linestyle="--", alpha=0.5)
+    ax0.legend(bbox_to_anchor=(1.02, 1.0), loc="upper left", frameon=True, fontsize=9)
 
+    # ---------------------------------------------------------
     # 2. HT Steam Bus (b_steam_ht)
+    # ---------------------------------------------------------
     ax1 = axes[1]
-    steam_cols = []
-    if "gas_boiler" in n.links_t.p1.columns:
-        steam_cols.append("gas_boiler")
-    if "electric_boiler" in n.links_t.p1.columns:
-        steam_cols.append("electric_boiler")
-    if "gas_chp" in n.links_t.p2.columns:
-        steam_df = n.links_t.p2[["gas_chp"]].rename(columns={"gas_chp": "gas_chp_steam"})
-        steam_df.plot(kind="area", stacked=True, ax=ax1, alpha=0.8, color="#e6550d")
-    ax1.set_title("High-Temperature Steam Supply (b_steam_ht) [kW_th]")
-    ax1.set_ylabel("Thermal Power [kW_th]")
-    ax1.grid(True, linestyle="--", alpha=0.5)
+    if hasattr(n, "links") and "gas_chp" in n.links.index:
+        if hasattr(n, "links_t") and hasattr(n.links_t, "p2") and "gas_chp" in n.links_t.p2.columns:
+            chp_steam = np.abs(n.links_t.p2.loc[snapshots, "gas_chp"])
+        else:
+            chp_steam = pd.Series(0.0, index=snapshots)
+        ax1.plot(snapshots, chp_steam, label="CHP Steam [kW_th]", color="#e6550d", linewidth=2.0)
 
+    if hasattr(n, "links") and "gas_boiler" in n.links.index:
+        if hasattr(n, "links_t") and hasattr(n.links_t, "p1") and "gas_boiler" in n.links_t.p1.columns:
+            gb_steam = np.abs(n.links_t.p1.loc[snapshots, "gas_boiler"])
+        else:
+            gb_steam = pd.Series(0.0, index=snapshots)
+        ax1.plot(snapshots, gb_steam, label="Gas Boiler [kW_th]", color="#fd8d3c", linewidth=2.0)
+
+    if hasattr(n, "links") and "electric_boiler" in n.links.index:
+        if hasattr(n, "links_t") and hasattr(n.links_t, "p1") and "electric_boiler" in n.links_t.p1.columns:
+            eb_steam = np.abs(n.links_t.p1.loc[snapshots, "electric_boiler"])
+        else:
+            eb_steam = pd.Series(0.0, index=snapshots)
+        ax1.plot(snapshots, eb_steam, label="E-Boiler [kW_th]", color="#74c476", linewidth=2.0)
+
+    if hasattr(n, "loads") and "demand_steam" in n.loads.index:
+        if hasattr(n, "loads_t") and hasattr(n.loads_t, "p_set") and "demand_steam" in n.loads_t.p_set.columns:
+            demand_s = n.loads_t.p_set.loc[snapshots, "demand_steam"]
+        elif hasattr(n, "loads_t") and hasattr(n.loads_t, "p") and "demand_steam" in n.loads_t.p.columns:
+            demand_s = n.loads_t.p.loc[snapshots, "demand_steam"]
+        else:
+            demand_s = pd.Series(0.0, index=snapshots)
+        ax1.plot(snapshots, demand_s, label="Demand Steam [kW_th]", color="black", linestyle="--", linewidth=2.5)
+
+    ax1.set_title("High-Temperature Steam Supply & Demand Dynamics (b_steam_ht) [kW_th]", fontsize=12, fontweight="bold")
+    ax1.set_ylabel("Thermal Power [kW_th]", fontsize=10, fontweight="bold")
+    ax1.grid(True, linestyle="--", alpha=0.5)
+    ax1.legend(bbox_to_anchor=(1.02, 1.0), loc="upper left", frameon=True, fontsize=9)
+
+    # ---------------------------------------------------------
     # 3. LT Process Heat Bus (b_heat_lt)
+    # ---------------------------------------------------------
     ax2 = axes[2]
-    heat_cols = []
-    if "heat_pump" in n.links_t.p1.columns:
-        heat_cols.append("heat_pump")
-    if "steam_to_heat_exchanger" in n.links_t.p1.columns:
-        heat_cols.append("steam_to_heat_exchanger")
-    if heat_cols:
-        n.links_t.p1[heat_cols].plot(kind="area", stacked=True, ax=ax2, alpha=0.8)
-    ax2.set_title("Mid-Temperature Process Heat Supply (b_heat_lt) [kW_th]")
-    ax2.set_ylabel("Thermal Power [kW_th]")
-    ax2.set_xlabel("Timestamp")
+    if hasattr(n, "links") and "heat_pump" in n.links.index:
+        if hasattr(n, "links_t") and hasattr(n.links_t, "p1") and "heat_pump" in n.links_t.p1.columns:
+            hp_heat = np.abs(n.links_t.p1.loc[snapshots, "heat_pump"])
+        else:
+            hp_heat = pd.Series(0.0, index=snapshots)
+        ax2.plot(snapshots, hp_heat, label="HTHP Heat [kW_th]", color="#2ca02c", linewidth=2.0)
+
+    if hasattr(n, "links") and "steam_to_heat_exchanger" in n.links.index:
+        if hasattr(n, "links_t") and hasattr(n.links_t, "p1") and "steam_to_heat_exchanger" in n.links_t.p1.columns:
+            hx_heat = np.abs(n.links_t.p1.loc[snapshots, "steam_to_heat_exchanger"])
+        else:
+            hx_heat = pd.Series(0.0, index=snapshots)
+        ax2.plot(snapshots, hx_heat, label="Steam-HX Heat [kW_th]", color="#bcbd22", linewidth=2.0)
+
+    if hasattr(n, "links") and "tes_discharger" in n.links.index:
+        if hasattr(n, "links_t") and hasattr(n.links_t, "p1") and "tes_discharger" in n.links_t.p1.columns:
+            tes_p = np.abs(n.links_t.p1.loc[snapshots, "tes_discharger"])
+        else:
+            tes_p = pd.Series(0.0, index=snapshots)
+        ax2.plot(snapshots, tes_p, label="TES Discharge [kW_th]", color="#a1d99b", linewidth=2.0)
+
+    if hasattr(n, "loads") and "demand_heat" in n.loads.index:
+        if hasattr(n, "loads_t") and hasattr(n.loads_t, "p_set") and "demand_heat" in n.loads_t.p_set.columns:
+            demand_h = n.loads_t.p_set.loc[snapshots, "demand_heat"]
+        elif hasattr(n, "loads_t") and hasattr(n.loads_t, "p") and "demand_heat" in n.loads_t.p.columns:
+            demand_h = n.loads_t.p.loc[snapshots, "demand_heat"]
+        else:
+            demand_h = pd.Series(0.0, index=snapshots)
+        ax2.plot(snapshots, demand_h, label="Demand Heat [kW_th]", color="black", linestyle="--", linewidth=2.5)
+
+    ax2.set_title("Mid-Temperature Process Heat Supply & Demand Dynamics (b_heat_lt) [kW_th]", fontsize=12, fontweight="bold")
+    ax2.set_ylabel("Thermal Power [kW_th]", fontsize=10, fontweight="bold")
+    ax2.set_xlabel("Timestamp", fontsize=10, fontweight="bold")
     ax2.grid(True, linestyle="--", alpha=0.5)
+    ax2.legend(bbox_to_anchor=(1.02, 1.0), loc="upper left", frameon=True, fontsize=9)
 
     fig.suptitle(title, fontsize=14, fontweight="bold")
     plt.tight_layout()
     return fig
 
 
-def plot_dispatch_stacks_interactive(results: Dict[str, Any], title: str = "Interactive PyPSA Multi-Carrier Dispatch Stack"):
-    """Generates an interactive Plotly dashboard for electricity, steam, and heat dispatch."""
-    if not HAS_PLOTLY:
-        return plot_dispatch_stacks(results, title)
+def plot_dispatch_stacks_interactive(
+    results: Dict[str, Any],
+    title: str = "Interactive PyPSA Multi-Carrier Dispatch Stack",
+    mode: str = "interactive",
+    start_time: Optional[str] = None,
+    duration_days: float = 7.0,
+):
+    """
+    Generates an interactive Plotly dashboard or static 1-week Matplotlib stack figure.
+    
+    Parameters
+    ----------
+    results : Dict[str, Any]
+        Results dictionary containing 'network' and optional 'config'.
+    title : str
+        Figure title.
+    mode : str
+        'interactive' (Plotly) or 'static' (Matplotlib).
+    start_time : Optional[str]
+        Start timestamp string (e.g. '01/01/2025 00:00:00'). Slices window when mode='static'.
+    duration_days : float
+        Duration in days for static mode plot window (default 7.0 days).
+    """
+    if mode.lower() == "static" or not HAS_PLOTLY:
+        return plot_dispatch_stacks(results, title=title, start_time=start_time, duration_days=duration_days)
+
+    if start_time is not None:
+        warnings.warn(
+            "The 'start_time' and date-window slicing parameters are active for static viewing mode (mode='static'). "
+            "Rendering full interactive Plotly timeline. Set mode='static' to render sliced 1-week view.",
+            UserWarning,
+            stacklevel=2,
+        )
 
     n = results["network"]
     snapshots = n.snapshots
@@ -135,16 +336,57 @@ def plot_dispatch_stacks_interactive(results: Dict[str, Any], title: str = "Inte
 
 def plot_market_prices_interactive(
     results: Dict[str, Any],
-    title: str = "Grid Spot Market Price Dynamics"
+    title: str = "Grid Spot Market Price Dynamics",
+    mode: str = "interactive",
+    start_time: Optional[str] = None,
+    duration_days: float = 7.0,
 ):
     """
-    Generates an interactive Plotly line chart displaying effective Electricity
-    and Natural Gas spot market price profiles [EUR/MWh] for a solved PyPSA network.
-    Automatically reflects configuration settings (e.g. Sec19 grid fee discount, CO2 tax).
+    Generates an interactive Plotly line chart or static Matplotlib plot displaying 
+    effective Electricity and Natural Gas spot market price profiles [EUR/MWh].
     """
     n = results["network"]
-    snapshots = n.snapshots
+    config = results.get("config", None)
 
+    if mode.lower() == "static" or not HAS_PLOTLY:
+        snapshots = _slice_snapshots_by_window(n, start_time=start_time, duration_days=duration_days, config=config)
+
+        elec_price = None
+        if "grid_electricity" in n.generators_t.marginal_cost.columns:
+            elec_price = n.generators_t.marginal_cost.loc[snapshots, "grid_electricity"] * 1000.0
+        elif "grid_electricity" in n.generators.index:
+            mc = float(n.generators.loc["grid_electricity", "marginal_cost"]) * 1000.0
+            elec_price = pd.Series(mc, index=snapshots)
+
+        gas_price = None
+        if "grid_gas" in n.generators_t.marginal_cost.columns:
+            gas_price = n.generators_t.marginal_cost.loc[snapshots, "grid_gas"] * 1000.0
+        elif "grid_gas" in n.generators.index:
+            mc = float(n.generators.loc["grid_gas", "marginal_cost"]) * 1000.0
+            gas_price = pd.Series(mc, index=snapshots)
+
+        fig, ax = plt.subplots(figsize=(12, 5))
+        if elec_price is not None:
+            ax.plot(snapshots, elec_price, label="Electricity Spot Price [EUR/MWh]", color="#3182bd", linewidth=1.5)
+        if gas_price is not None:
+            ax.plot(snapshots, gas_price, label="Natural Gas Spot Price [EUR/MWh]", color="#e6550d", linewidth=1.5)
+        ax.set_title(title)
+        ax.set_ylabel("Price [EUR/MWh]")
+        ax.set_xlabel("Timestamp")
+        ax.grid(True, linestyle="--", alpha=0.5)
+        ax.legend()
+        plt.tight_layout()
+        return fig
+
+    if start_time is not None:
+        warnings.warn(
+            "The 'start_time' and date-window slicing parameters are active for static viewing mode (mode='static'). "
+            "Rendering full interactive Plotly timeline. Set mode='static' to render sliced 1-week view.",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    snapshots = n.snapshots
     elec_price = None
     if "grid_electricity" in n.generators_t.marginal_cost.columns:
         elec_price = n.generators_t.marginal_cost["grid_electricity"] * 1000.0
@@ -158,20 +400,6 @@ def plot_market_prices_interactive(
     elif "grid_gas" in n.generators.index:
         mc = float(n.generators.loc["grid_gas", "marginal_cost"]) * 1000.0
         gas_price = pd.Series(mc, index=snapshots)
-
-    if not HAS_PLOTLY:
-        fig, ax = plt.subplots(figsize=(12, 5))
-        if elec_price is not None:
-            ax.plot(snapshots, elec_price, label="Electricity Spot Price [EUR/MWh]", color="#3182bd", linewidth=1.5)
-        if gas_price is not None:
-            ax.plot(snapshots, gas_price, label="Natural Gas Spot Price [EUR/MWh]", color="#e6550d", linewidth=1.5)
-        ax.set_title(title)
-        ax.set_ylabel("Price [EUR/MWh]")
-        ax.set_xlabel("Timestamp")
-        ax.grid(True, linestyle="--", alpha=0.5)
-        ax.legend()
-        plt.tight_layout()
-        return fig
 
     fig = go.Figure()
     if elec_price is not None:
@@ -189,7 +417,25 @@ def plot_market_prices_interactive(
     return fig
 
 
-# Backward-compatibility alias
+# Explicit static aliases and backward-compatibility aliases
+plot_dispatch_stacks_static = plot_dispatch_stacks
+
+def plot_market_prices_static(
+    results: Dict[str, Any],
+    title: str = "Grid Spot Market Price Dynamics",
+    start_time: Optional[str] = None,
+    duration_days: float = 7.0,
+) -> plt.Figure:
+    """Generates static 1-week Matplotlib line chart for spot market prices."""
+    return plot_market_prices_interactive(
+        results=results,
+        title=title,
+        mode="static",
+        start_time=start_time,
+        duration_days=duration_days,
+    )
+
+plot_market_prices = plot_market_prices_interactive
 plot_dispatch_with_market_prices_interactive = plot_market_prices_interactive
 
 
@@ -417,11 +663,13 @@ def create_summary_dataframe(results_dict: Dict[str, Dict[str, Any]], annual_ton
 def plot_scenario_cost_per_ton_interactive(
     scenarios: Dict[str, Any],
     annual_tonnage: float = 450000.0,
-    title: str = "Unit Production Cost Comparison (€/ton)"
+    title: str = "Unit Production Cost Comparison (€/ton)",
+    mode: str = "static",
 ):
     """
     Generates a modular bar chart comparing EUR/ton across arbitrary scenarios (2, 3, or N scenarios).
     Automatically scales production tonnage to match the period duration of each solved scenario.
+    Defaults to static Matplotlib output for direct online GitHub notebook rendering.
     
     Parameters
     ----------
@@ -429,14 +677,16 @@ def plot_scenario_cost_per_ton_interactive(
         Mapping of Scenario Name -> (PyPSA results dict OR numeric float/int EUR/ton value).
         Examples:
             # 2 Scenarios:
-            plot_scenario_cost_per_ton_interactive({"Baseline": 145.20, "Operation Hub": meta_op})
+            plot_scenario_cost_per_ton({"Baseline": 145.20, "Operation Hub": meta_op})
             
             # 3 Scenarios:
-            plot_scenario_cost_per_ton_interactive({"Baseline": 145.20, "Operation Hub": meta_op, "Decision Hub": meta_inv})
+            plot_scenario_cost_per_ton({"Baseline": 145.20, "Operation Hub": meta_op, "Decision Hub": meta_inv})
     annual_tonnage : float
         Annual production output in tons (default 450,000 tons/year).
     title : str
         Chart title.
+    mode : str
+        'static' (Matplotlib, default) or 'interactive' (Plotly).
     """
     labels = []
     values = []
@@ -461,14 +711,29 @@ def plot_scenario_cost_per_ton_interactive(
     colors = ["#e6550d", "#3182bd", "#2ca02c", "#74c476", "#fd8d3c", "#9ecae1"]
     bar_colors = [colors[i % len(colors)] for i in range(len(labels))]
 
-    if not HAS_PLOTLY:
+    if mode.lower() == "static" or not HAS_PLOTLY:
         fig, ax = plt.subplots(figsize=(8, 5))
-        ax.bar(labels, values, color=bar_colors)
-        ax.set_ylabel("EUR / ton")
-        ax.set_title(title)
-        ax.grid(True, linestyle="--", alpha=0.5)
-        for i, v in enumerate(values):
-            ax.text(i, v + (max(values) * 0.01 if values else 1.0), f"€{v:.2f}/t", ha="center", fontweight="bold")
+        bars = ax.bar(labels, values, color=bar_colors, width=0.55, edgecolor="black", linewidth=0.8)
+        ax.set_ylabel("Unit Cost [EUR / ton]", fontsize=11, fontweight="bold")
+        ax.set_xlabel("Scenario Tiers", fontsize=11, fontweight="bold")
+        ax.set_title(title, fontsize=13, fontweight="bold", pad=12)
+        ax.grid(True, linestyle="--", alpha=0.5, axis="y")
+
+        max_v = max(values) if values else 1.0
+        ax.set_ylim(0, max_v * 1.18)
+
+        for bar, v in zip(bars, values):
+            height = bar.get_height()
+            ax.text(
+                bar.get_x() + bar.get_width() / 2.0,
+                height + (max_v * 0.02),
+                f"€{v:.2f} / t",
+                ha="center",
+                va="bottom",
+                fontweight="bold",
+                fontsize=10,
+            )
+
         plt.tight_layout()
         return fig
 
@@ -489,6 +754,11 @@ def plot_scenario_cost_per_ton_interactive(
         template="plotly_white"
     )
     return fig
+
+
+# Aliases for plot_scenario_cost_per_ton
+plot_scenario_cost_per_ton = plot_scenario_cost_per_ton_interactive
+plot_scenario_cost_per_ton_static = plot_scenario_cost_per_ton_interactive
 
 
 def create_pypsa_asset_sizing_table(results_or_net: Any) -> pd.DataFrame:

@@ -293,6 +293,13 @@ class HenkelEnergySystem:
         if self.config.wind_ppa_strike_price_eur_per_mwh is not None:
             self.comp_cfg.wind_ppa.strike_price_eur_per_mwh = self.config.wind_ppa_strike_price_eur_per_mwh
 
+        # Active continuous electrical demand attribute (MW)
+        self.demand_elec_mw = (
+            self.config.fixed_components_sizing.demand_elec_mw
+            if self.config.fixed_components_sizing.demand_elec_mw is not None
+            else self.comp_cfg.demand.elec_demand_mw
+        )
+
         # PyPSA network and solution state
         self.network: Optional[pypsa.Network] = None
         self.results: Optional[Dict[str, Any]] = None
@@ -342,7 +349,7 @@ class HenkelEnergySystem:
         n.add("Bus", "b_heat_lt", carrier="heat_lt", x=6.8350, y=51.1715)
 
         # 1. Grid Electricity and Natural Gas Import Components
-        grid_p_nom = 60000.0 if self.enable_sec19_protection else 1e6
+        grid_p_nom = 1.25 * self.demand_elec_mw * 1000.0 if self.enable_sec19_protection else 1e6
         grid_elec_cfg = GridElectricityConfig(p_nom=grid_p_nom)
 
         if self.enable_sec19_protection:
@@ -354,6 +361,7 @@ class HenkelEnergySystem:
             price_series=pd.Series(grid_elec_cost_kwh, index=df_m.index),
             config=grid_elec_cfg,
         )
+        #If the user enables CO2 tax config, then additional gas cost calculation will be proceeded, if not, then the total gas cost (CO2 included) will be used
         grid_elec.build_component(n, wacc=self.wacc)
         if self.co2_tax_eur_per_ton:
             gas_cost_eur_kwh = (
@@ -517,12 +525,29 @@ class HenkelEnergySystem:
         self.network = n
         return n
 
-    def solve(self, solver_name: str = "highs", timesteps: Optional[int] = None, **kwargs) -> Dict[str, Any]:
+    def solve(
+        self,
+        solver_name: str = "highs",
+        timesteps: Optional[int] = None,
+        solver_options: Optional[Dict[str, Any]] = None,
+        quiet: bool = False,
+        **kwargs,
+    ) -> Dict[str, Any]:
         """Solves the PyPSA energy system optimization problem and synthesizes results."""
         if self.network is None:
             self.build_energy_system(timesteps=timesteps)
 
         n = self.network
+
+        # Configure solver options and logging
+        opts = solver_options.copy() if solver_options is not None else {}
+        if quiet:
+            import logging
+
+            logging.getLogger("pypsa").setLevel(logging.ERROR)
+            logging.getLogger("linopy").setLevel(logging.ERROR)
+            if solver_name.lower() == "highs" and "log_to_console" not in opts:
+                opts["log_to_console"] = False
 
         def apply_c_rate_coupling(net: pypsa.Network, snapshots: pd.Index) -> None:
             """Couples extendable storage charger/discharger link capacities to store energy capacity."""
@@ -556,8 +581,10 @@ class HenkelEnergySystem:
         # Optimize using linopy / highs
         n.optimize(
             solver_name=solver_name,
+            solver_options=opts if opts else None,
             extra_functionality=apply_c_rate_coupling,
             include_objective_constant=False,
+            **kwargs,
         )
 
         # Calculate OPEX (operational cost of imports scaled to annual equivalent in investment mode)
@@ -608,11 +635,11 @@ class HenkelEnergySystem:
         # Calculate Emissions
         gas_mwh = float(grid_gas_p.sum()) / 1000.0
         elec_mwh = float(grid_elec_p.sum()) / 1000.0
-        emissions_t_co2 = (gas_mwh * GAS_EMISSION_FACTOR_T_PER_MWH) + (elec_mwh * GRID_ELEC_EMISSION_FACTOR_T_PER_MWH)
+        emissions_t_co2 = (gas_mwh * GAS_EMISSION_FACTOR_T_PER_MWH) + (elec_mwh * GRID_ELEC_EMISSION_FACTOR_T_PER_MWH) 
 
         # Sec19 peak grid demand check & audit verification
         peak_grid_kw = float(grid_elec_p.max())
-        sec19_violation = peak_grid_kw > 60000.0 + 1e-3
+        sec19_violation = peak_grid_kw > 1.25 * self.demand_elec_mw * 1000.0
 
         # Optimal sizing dictionary
         optimal_capacities = {}
