@@ -384,85 +384,123 @@ def plot_dispatch_stacks_interactive(
 
 def plot_market_prices_interactive(
     results: Dict[str, Any],
-    title: str = "Grid Spot Market Price Dynamics",
+    title: str = "Grid & PPA Energy Market Price Dynamics",
     mode: str = "interactive",
     start_time: Optional[str] = None,
     duration_days: float = 7.0,
 ):
     """
     Generates an interactive Plotly line chart or static Matplotlib plot displaying 
-    effective Electricity and Natural Gas spot market price profiles [EUR/MWh].
+    effective Grid Electricity Import, Grid Export, Gas Import, and PPA Strike Price profiles [EUR/MWh].
+    Legends explicitly cite the underlying column source from market_data_2025.csv.
     """
     n = results["network"]
     config = results.get("config", None)
 
+    # 1. Determine snapshot window
     if mode.lower() == "static" or not HAS_PLOTLY:
         snapshots = _slice_snapshots_by_window(n, start_time=start_time, duration_days=duration_days, config=config)
+    else:
+        snapshots = n.snapshots
+        if start_time is not None:
+            warnings.warn(
+                "The 'start_time' and date-window slicing parameters are active for static viewing mode (mode='static'). "
+                "Rendering full interactive Plotly timeline. Set mode='static' to render sliced 1-week view.",
+                UserWarning,
+                stacklevel=2,
+            )
 
-        elec_price = None
-        if "grid_electricity" in n.generators_t.marginal_cost.columns:
-            elec_price = n.generators_t.marginal_cost.loc[snapshots, "grid_electricity"] * 1000.0
-        elif "grid_electricity" in n.generators.index:
-            mc = float(n.generators.loc["grid_electricity", "marginal_cost"]) * 1000.0
-            elec_price = pd.Series(mc, index=snapshots)
+    # 2. Extract Grid Electricity Import Price Series & Column Citation
+    elec_import_series = None
+    is_sec19 = not results.get("sec19_violation", False)
+    elec_import_col = "elec_total_sec19_eur_mwh" if is_sec19 else "elec_total_standard_eur_mwh"
+    if hasattr(n, "generators_t") and hasattr(n.generators_t, "marginal_cost") and "grid_electricity" in n.generators_t.marginal_cost.columns:
+        elec_import_series = n.generators_t.marginal_cost.loc[snapshots, "grid_electricity"] * 1000.0
+    elif "grid_electricity" in n.generators.index:
+        mc = float(n.generators.loc["grid_electricity", "marginal_cost"]) * 1000.0
+        elec_import_series = pd.Series(mc, index=snapshots)
 
-        gas_price = None
-        if "grid_gas" in n.generators_t.marginal_cost.columns:
-            gas_price = n.generators_t.marginal_cost.loc[snapshots, "grid_gas"] * 1000.0
-        elif "grid_gas" in n.generators.index:
-            mc = float(n.generators.loc["grid_gas", "marginal_cost"]) * 1000.0
-            gas_price = pd.Series(mc, index=snapshots)
+    # 3. Extract Grid Electricity Export Price Series & Column Citation
+    export_series = None
+    export_col = "elec_spot_eur_mwh"
+    if hasattr(n, "generators_t") and hasattr(n.generators_t, "marginal_cost") and "grid_export" in n.generators_t.marginal_cost.columns:
+        export_series = n.generators_t.marginal_cost.loc[snapshots, "grid_export"] * 1000.0
+    elif "grid_export" in n.generators.index:
+        mc = float(n.generators.loc["grid_export", "marginal_cost"]) * 1000.0
+        export_series = pd.Series(mc, index=snapshots)
 
-        fig, ax = plt.subplots(figsize=(12, 5))
-        if elec_price is not None:
-            ax.plot(snapshots, elec_price, label="Electricity Spot Price [EUR/MWh]", color="#3182bd", linewidth=1.5)
-        if gas_price is not None:
-            ax.plot(snapshots, gas_price, label="Natural Gas Spot Price [EUR/MWh]", color="#e6550d", linewidth=1.5)
-        ax.set_title(title)
-        ax.set_ylabel("Price [EUR/MWh]")
-        ax.set_xlabel("Timestamp")
+    # 4. Extract Gas Import Price Series & Column Citation
+    gas_series = None
+    gas_col = "gas_total_eur_mwh"
+    if hasattr(n, "generators_t") and hasattr(n.generators_t, "marginal_cost") and "grid_gas" in n.generators_t.marginal_cost.columns:
+        gas_series = n.generators_t.marginal_cost.loc[snapshots, "grid_gas"] * 1000.0
+    elif "grid_gas" in n.generators.index:
+        mc = float(n.generators.loc["grid_gas", "marginal_cost"]) * 1000.0
+        gas_series = pd.Series(mc, index=snapshots)
+
+    # 5. Extract PPA Strike Prices
+    pv_ppa_strike = None
+    if "pv_ppa" in n.generators.index:
+        mc_kwh = float(n.generators.loc["pv_ppa", "marginal_cost"])
+        pv_ppa_strike = mc_kwh * 1000.0
+
+    wind_ppa_strike = None
+    if "wind_ppa" in n.generators.index:
+        mc_kwh = float(n.generators.loc["wind_ppa", "marginal_cost"])
+        wind_ppa_strike = mc_kwh * 1000.0
+
+    # Render static Matplotlib plot
+    if mode.lower() == "static" or not HAS_PLOTLY:
+        fig, ax = plt.subplots(figsize=(12, 6))
+        if elec_import_series is not None:
+            mean_imp = elec_import_series.mean()
+            ax.plot(snapshots, elec_import_series, label=f"Grid Import [{elec_import_col}] (Mean: €{mean_imp:.2f}/MWh)", color="#3182bd", linewidth=1.8)
+        if export_series is not None:
+            mean_exp = export_series.mean()
+            ax.plot(snapshots, export_series, label=f"Grid Export [{export_col}] (Mean: €{mean_exp:.2f}/MWh)", color="#17becf", linewidth=1.5, linestyle=":")
+        if gas_series is not None:
+            mean_gas = gas_series.mean()
+            ax.plot(snapshots, gas_series, label=f"Natural Gas Import [{gas_col}] (Mean: €{mean_gas:.2f}/MWh)", color="#e6550d", linewidth=1.8)
+        if pv_ppa_strike is not None:
+            ax.axhline(pv_ppa_strike, color="#ffbb78", linestyle="--", linewidth=2.0, label=f"PV PPA Strike [pv_ppa] (Fixed: €{pv_ppa_strike:.2f}/MWh)")
+        if wind_ppa_strike is not None:
+            ax.axhline(wind_ppa_strike, color="#98df8a", linestyle="--", linewidth=2.0, label=f"Wind PPA Strike [wind_ppa] (Fixed: €{wind_ppa_strike:.2f}/MWh)")
+
+        ax.set_title(title, fontsize=12, fontweight="bold")
+        ax.set_ylabel("Price [EUR/MWh]", fontsize=10, fontweight="bold")
+        ax.set_xlabel("Timestamp", fontsize=10, fontweight="bold")
         ax.grid(True, linestyle="--", alpha=0.5)
-        ax.legend()
+        ax.legend(bbox_to_anchor=(1.02, 1.0), loc="upper left", frameon=True, fontsize=9)
         plt.tight_layout()
         return fig
 
-    if start_time is not None:
-        warnings.warn(
-            "The 'start_time' and date-window slicing parameters are active for static viewing mode (mode='static'). "
-            "Rendering full interactive Plotly timeline. Set mode='static' to render sliced 1-week view.",
-            UserWarning,
-            stacklevel=2,
-        )
-
-    snapshots = n.snapshots
-    elec_price = None
-    if "grid_electricity" in n.generators_t.marginal_cost.columns:
-        elec_price = n.generators_t.marginal_cost["grid_electricity"] * 1000.0
-    elif "grid_electricity" in n.generators.index:
-        mc = float(n.generators.loc["grid_electricity", "marginal_cost"]) * 1000.0
-        elec_price = pd.Series(mc, index=snapshots)
-
-    gas_price = None
-    if "grid_gas" in n.generators_t.marginal_cost.columns:
-        gas_price = n.generators_t.marginal_cost["grid_gas"] * 1000.0
-    elif "grid_gas" in n.generators.index:
-        mc = float(n.generators.loc["grid_gas", "marginal_cost"]) * 1000.0
-        gas_price = pd.Series(mc, index=snapshots)
-
+    # Render interactive Plotly chart
     fig = go.Figure()
-    if elec_price is not None:
-        fig.add_trace(go.Scatter(x=snapshots, y=elec_price, name="Grid Electricity Price [€/MWh]", line=dict(color="#3182bd", width=2)))
-    if gas_price is not None:
-        fig.add_trace(go.Scatter(x=snapshots, y=gas_price, name="Natural Gas Price [€/MWh]", line=dict(color="#e6550d", width=2)))
+    if elec_import_series is not None:
+        mean_imp = elec_import_series.mean()
+        fig.add_trace(go.Scatter(x=snapshots, y=elec_import_series, name=f"Grid Import [{elec_import_col}] (Mean: €{mean_imp:.2f}/MWh)", line=dict(color="#3182bd", width=2)))
+    if export_series is not None:
+        mean_exp = export_series.mean()
+        fig.add_trace(go.Scatter(x=snapshots, y=export_series, name=f"Grid Export [{export_col}] (Mean: €{mean_exp:.2f}/MWh)", line=dict(color="#17becf", width=2, dash="dot")))
+    if gas_series is not None:
+        mean_gas = gas_series.mean()
+        fig.add_trace(go.Scatter(x=snapshots, y=gas_series, name=f"Natural Gas Import [{gas_col}] (Mean: €{mean_gas:.2f}/MWh)", line=dict(color="#e6550d", width=2)))
+    if pv_ppa_strike is not None:
+        fig.add_trace(go.Scatter(x=[snapshots[0], snapshots[-1]], y=[pv_ppa_strike, pv_ppa_strike], name=f"PV PPA Strike [pv_ppa] (Fixed: €{pv_ppa_strike:.2f}/MWh)", line=dict(color="#ffbb78", width=2.5, dash="dash")))
+    if wind_ppa_strike is not None:
+        fig.add_trace(go.Scatter(x=[snapshots[0], snapshots[-1]], y=[wind_ppa_strike, wind_ppa_strike], name=f"Wind PPA Strike [wind_ppa] (Fixed: €{wind_ppa_strike:.2f}/MWh)", line=dict(color="#98df8a", width=2.5, dash="dash")))
+
 
     fig.update_layout(
         title=title,
         xaxis_title="Timestamp",
-        yaxis_title="Spot Price [EUR / MWh]",
+        yaxis_title="Market / Contract Price [EUR / MWh]",
         template="plotly_white",
-        hovermode="x unified"
+        hovermode="x unified",
+        legend=dict(orientation="v", yanchor="top", y=0.99, xanchor="left", x=1.02)
     )
     return fig
+
 
 
 # Explicit static aliases and backward-compatibility aliases
@@ -1270,11 +1308,12 @@ def plot_network_schematic(
     # Layout node templates
     nodes = {
         # Supply Generators
-        "grid_gas": {"pos": (1, 8.5), "color": "#6baed6", "label": "Grid Gas\n(Import)"},
-        "grid_electricity": {"pos": (1, 6.2), "color": "#3182bd", "label": "Grid Power\n(Import)"},
-        "pv_ppa": {"pos": (1, 4.2), "color": "#ffbb78", "type": "generators", "prefix": "Solar PPA", "unit": "MW"},
+        "grid_gas": {"pos": (1, 8.8), "color": "#6baed6", "label": "Grid Gas\n(Import)"},
+        "grid_electricity": {"pos": (1, 6.8), "color": "#3182bd", "label": "Grid Power\n(Import)"},
+        "grid_export": {"pos": (1, 5.2), "color": "#17becf", "label": "Grid Export\n(Wholesale Spot)"},
+        "pv_ppa": {"pos": (1, 3.8), "color": "#ffbb78", "type": "generators", "prefix": "Solar PPA", "unit": "MW"},
         "solar_pv": {"pos": (1, 2.2), "color": "#fec44f", "type": "generators", "prefix": "Rooftop PV", "unit": "MWp"},
-        "wind_ppa": {"pos": (1, 0.2), "color": "#98df8a", "type": "generators", "prefix": "Wind PPA", "unit": "MW"},
+        "wind_ppa": {"pos": (1, 0.6), "color": "#98df8a", "type": "generators", "prefix": "Wind PPA", "unit": "MW"},
 
         # Central Energy Buses
         "b_gas": {"pos": (4, 8), "color": "#6baed6", "label": "Gas Bus\n[b_gas]", "is_bus": True},
@@ -1303,7 +1342,7 @@ def plot_network_schematic(
         if info.get("is_bus", False):
             if name in n.buses.index:
                 active_nodes[name] = info
-        elif name in ["grid_gas", "grid_electricity", "demand_elec", "demand_steam", "demand_heat"]:
+        elif name in ["grid_gas", "grid_electricity", "grid_export", "demand_elec", "demand_steam", "demand_heat"]:
             if name in n.generators.index or name in n.loads.index:
                 active_nodes[name] = info
         elif "type" in info:
@@ -1361,6 +1400,7 @@ def plot_network_schematic(
         ("pv_ppa", "b_elec"),
         ("solar_pv", "b_elec"),
         ("wind_ppa", "b_elec"),
+        ("b_elec", "grid_export"),
         ("b_gas", "gas_chp"),
         ("b_gas", "gas_boiler"),
         ("gas_chp", "b_steam_ht"),

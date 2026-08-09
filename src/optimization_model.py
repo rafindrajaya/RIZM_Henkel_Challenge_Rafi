@@ -89,6 +89,7 @@ class FixedSizingConfig(BaseModel):
     chp_th: float = Field(default=30000.0, ge=0.0, description="Existing CHP thermal capacity in kW")
     gas_boiler: float = Field(default=180000.0, ge=0.0, description="Existing Gas Boiler thermal capacity in kW")
     eboiler: float = Field(default=25000.0, ge=0.0, description="Existing Electric Boiler thermal capacity in kW")
+    grid_export: float = Field(default=1e6, ge=0.0, description="Electricity grid export capacity limit in kW")
     demand_elec_mw: Optional[float] = Field(default=None, ge=0.0, description="Electrical continuous baseload demand override in MW")
     demand_steam_mw_th: Optional[float] = Field(default=None, ge=0.0, description="High-temp steam demand override in MW_th")
     demand_heat_mw_th: Optional[float] = Field(default=None, ge=0.0, description="Mid-temp process heat demand override in MW_th")
@@ -268,6 +269,7 @@ class HenkelEnergySystem:
         self.cap_chp_th = self.config.fixed_components_sizing.chp_th
         self.cap_gas_boiler = self.config.fixed_components_sizing.gas_boiler
         self.cap_eboiler = self.config.fixed_components_sizing.eboiler
+        self.grid_export_limit_kw = self.config.fixed_components_sizing.grid_export
 
         base_data_dir = Path(__file__).parent.parent / "data"
 
@@ -379,7 +381,8 @@ class HenkelEnergySystem:
 
         # Grid Export Component (Selling surplus electricity back to grid at wholesale spot price)
         spot_price_series = pd.Series(np.asarray(df_m["elec_spot_eur_mwh"], dtype=float), index=df_m.index)
-        grid_export = GridExportComponent(spot_price_series=spot_price_series)
+        export_cfg = GridExportConfig(p_nom=self.config.fixed_components_sizing.grid_export)
+        grid_export = GridExportComponent(spot_price_series=spot_price_series, config=export_cfg)
         grid_export.build_component(n, wacc=self.wacc)
 
         # 2. Demand Sinks (configurable via demand.toml and FixedSizingConfig)
@@ -514,6 +517,9 @@ class HenkelEnergySystem:
             lifetime_years=self.comp_cfg.bess.lifetime_years,
             charge_efficiency=self.comp_cfg.bess.charge_efficiency,
             discharge_efficiency=self.comp_cfg.bess.discharge_efficiency,
+            min_soc=self.comp_cfg.bess.min_soc,
+            initial_soc=self.comp_cfg.bess.initial_soc,
+            e_cyclic=self.comp_cfg.bess.e_cyclic,
         )
         bess_comp = BESSComponent(bess_cfg)
         bess_comp.build_component(n, wacc=self.wacc)
@@ -524,8 +530,11 @@ class HenkelEnergySystem:
             is_extendable=is_tes_ext,
             max_capacity_kwh=self.config.variable_components_sizing.tes.max_capacity if is_tes_ext else 100000.0,
             capex_eur_per_kwh=self.comp_cfg.tes.capex_eur_per_kwh,
-            opex_eur_per_kwh_year=1.0,
+            opex_eur_per_kwh_year=self.comp_cfg.tes.opex_eur_per_kwh_year,
             lifetime_years=self.comp_cfg.tes.lifetime_years,
+            min_soc=self.comp_cfg.tes.min_soc,
+            initial_soc=self.comp_cfg.tes.initial_soc,
+            e_cyclic=self.comp_cfg.tes.e_cyclic,
         )
         tes_comp = TESComponent(tes_cfg)
         tes_comp.build_component(n, wacc=self.wacc)

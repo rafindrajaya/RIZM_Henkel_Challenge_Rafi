@@ -19,6 +19,7 @@ class BESSComponentConfig(BaseComponentConfig):
     self_discharge_rate_per_hour: float = Field(default=0.0001, ge=0.0)
     min_soc: float = Field(default=0.05, ge=0.0, le=1.0)  # 5% Minimum SOC limit
     initial_soc: float = Field(default=0.05, ge=0.0, le=1.0)  # 5% Initial SOC
+    e_cyclic: bool = Field(default=True, description="Enable cyclic state of charge constraint (e_start == e_end)")
     c_rate: float = Field(default=0.5, ge=0.0)
     marginal_cost_eur_per_kwh: float = Field(default=0.0015, ge=0.0)  # €1.5/MWh small penalty to prevent LP simultaneous cycling
     installed_capacity_kwh: float = Field(default=0.0, ge=0.0)
@@ -39,6 +40,7 @@ class TESComponentConfig(BaseComponentConfig):
     loss_rate_per_hour: float = Field(default=0.005, ge=0.0)
     min_soc: float = Field(default=0.05, ge=0.0, le=1.0)  # 5% Minimum SOC limit
     initial_soc: float = Field(default=0.05, ge=0.0, le=1.0)  # 5% Initial SOC
+    e_cyclic: bool = Field(default=True, description="Enable cyclic state of charge constraint (e_start == e_end)")
     c_rate: float = Field(default=0.25, ge=0.0)
     marginal_cost_eur_per_kwh: float = Field(default=0.0015, ge=0.0)  # €1.5/MWh small penalty to prevent LP simultaneous cycling
     installed_capacity_kwh: float = Field(default=20000.0, ge=0.0)
@@ -69,7 +71,7 @@ class BESSComponent(BaseEnergyComponent):
                 e_nom_min=self.bess_config.min_capacity_kwh,
                 e_nom_max=self.bess_config.max_capacity_kwh,
                 e_min_pu=self.bess_config.min_soc,
-                e_cyclic=True,
+                e_cyclic=self.bess_config.e_cyclic,
                 standing_loss=self.bess_config.self_discharge_rate_per_hour,
                 capital_cost=capital_cost,
             )
@@ -106,7 +108,7 @@ class BESSComponent(BaseEnergyComponent):
                 e_nom_extendable=False,
                 e_min_pu=self.bess_config.min_soc,
                 e_initial=e_nom * self.bess_config.initial_soc,
-                e_cyclic=True,
+                e_cyclic=self.bess_config.e_cyclic,
                 standing_loss=self.bess_config.self_discharge_rate_per_hour,
             )
             network.add(
@@ -153,7 +155,7 @@ class TESComponent(BaseEnergyComponent):
                 e_nom_min=self.tes_config.min_capacity_kwh,
                 e_nom_max=self.tes_config.max_capacity_kwh,
                 e_min_pu=self.tes_config.min_soc,
-                e_cyclic=True,
+                e_cyclic=self.tes_config.e_cyclic,
                 standing_loss=self.tes_config.loss_rate_per_hour,
                 capital_cost=capital_cost,
             )
@@ -190,7 +192,7 @@ class TESComponent(BaseEnergyComponent):
                 e_nom_extendable=False,
                 e_min_pu=self.tes_config.min_soc,
                 e_initial=e_nom * self.tes_config.initial_soc,
-                e_cyclic=True,
+                e_cyclic=self.tes_config.e_cyclic,
                 standing_loss=self.tes_config.loss_rate_per_hour,
             )
             network.add(

@@ -16,9 +16,10 @@ charge_efficiency = 0.95       # DC charging efficiency (sqrt of RTE)
 discharge_efficiency = 0.95    # DC discharging efficiency (sqrt of RTE)
 self_discharge_rate_per_hour = 0.0001  # 0.01%/h calendar degradation proxy
 min_soc = 0.05                 # 5% Minimum state of charge limit
-initial_soc = 0.2             # Initial state of charge (5% fraction)
+initial_soc = 0.5             # Initial state of charge (5% fraction)
+e_cyclic = true                # Enable cyclic state of charge constraint (e_start == e_end)
 c_rate = 0.5                   # Max charge/discharge power = C_rate * capacity (0.5C -> 2h full cycle)
-marginal_cost_eur_per_kwh = 0.0015  # €1.50/MWh O&M degradation penalty to prevent LP simultaneous cycling
+marginal_cost_eur_per_kwh = 0.002  # €2.0/MWh O&M degradation penalty to prevent LP simultaneous cycling
 
 # Sizing constraint
 max_capacity_kwh = 50000.0     # 50 MWh maximum (site space and grid connection limit)

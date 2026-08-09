@@ -45,16 +45,56 @@ fig_cost = plot_scenario_cost_per_ton_interactive(
     title="Unit Production Cost Comparison (€/ton)"
 )
 - Attach the google earth view reference for the possible onsite PV rooftop addition
-
-
-## TODO 2:
-- I got to validate the result again, especiall investment hub since I just got a new result again
-- Fix the executive summary with the new results
-- Explain why am I fixing the max capacity of PPA to 25 MW and 20 MW?
 - Now there is a problem of silmutaneous chargin and discharging, I have to devise a way to prevent this without using binary (small cost penalty or efficiency penalty), gotta check this with grid import and export as well
+- Explain why am I fixing the max capacity of PPA to 25 MW and 20 MW?
 - Check how I can use the utils that display the metrics such as self consumption, export total, etc
 - After the fix, why does the solve still decide to invest heavily on PPA?
+- I got to validate the result again, especiall investment hub since I just got a new result again
+
+## TODO 2:
+- Fix the sensitivity analysis with the new results
 - Recreate the static file
+- Finalize readme, spec, and repo structure
+- Submit
+	
+
+    - Fix the executive summary with the new results
+    - Add an explanation the assumption for the boudnary selected for PPA and grid export limit: 
+        - Off-site Solar PPA (kW) - Both PPA max bound capacities are limited to 50% of continuous elec demand to maximize self consumption rather than export. It is also the safest assumption to avoid local DSO congestion hurdles
+        - Grid export cap that represent 50% of the continuous load demand: This assumption is selected to represent standard distribuiton feeder export limits imposed by local utilities
+    - Try to explain why the solver decides to max out PPA investment for both sec 19 or not sec 19 grid import cost (calculate the mean of the cost): From the mean, we can know that the import cost is most of the time more expensive than the fixed PPA strike cost
+    - Explain that 
+
+New results: 
+Asset Component	Optimal Sizing Capacity	Unit
+    
+0	GRID_EXPORT	30,000.00	kW
+1	SOLAR_PV	1,000.00	kWp
+2	PV_PPA	30,000.00	kWp
+3	WIND_PPA	30,000.00	kW
+4	GAS_CHP	10,000.00	kW_el
+5	GAS_BOILER	217,100.00	kW_th
+6	ELECTRIC_BOILER	23,814.88	kW_th
+7	HEAT_PUMP	60,000.00	kW_th
+8	TES_CHARGER	0.00	kW_th
+9	TES_DISCHARGER	0.00	kW_th
+10	TES	0.00	kWh_th
+
+Baseline: 
+Hourly Gas Consumption:        253.23 MW_fuel
+Hourly Grid Power Import:      50.00 MW_el
+Annual Natural Gas + CO2 Bill: €131,003,958.68
+Annual Electricity Bill (Sec19):€40,479,952.50
+Total Baseline OPEX (§ 19 Privileged): €171,483,911.18
+FINAL METRIC (§ 19 Privileged):        381.08 € / ton
+=======================================================================
+
+	Total Cost (EUR)	Cost per Ton (EUR/ton)	OPEX (EUR)	Annualized CAPEX (EUR)	Emissions (tCO2)	Peak Grid Demand (MW)	Grid Export (MWh)	Grid Export Rev (EUR)	Self-Consumption (%)	Autarky (%)	Curtailed Elec (%)	Curtailed Heat (%)	Simultaneous Ops	Sec19 Compliant
+Scenario														
+Operation Hub	1.708188e+08	379.597373	1.708188e+08	0.000000e+00	614120.371686	56.333787	0.0	0.0	0.00	0.00	0.0	0.0	0 hrs (0.0%)	True
+Decision Hub	1.543134e+08	342.918571	1.497521e+08	4.561219e+06	532422.926099	75.000000	0.0	0.0	99.97	20.59	0.0	0.0	0 hrs (0.0%)	True
+
+
 
 
 ## Finishing
