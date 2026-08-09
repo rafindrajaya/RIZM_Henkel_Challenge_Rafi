@@ -35,6 +35,8 @@ from .components import (
     GridGasComponent,
     GridElectricityConfig,
     GridGasConfig,
+    GridExportComponent,
+    GridExportConfig,
     PVPPAComponent,
     WindPPAComponent,
     PVPPAConfig,
@@ -374,6 +376,11 @@ class HenkelEnergySystem:
         grid_gas = GridGasComponent(price_series=pd.Series(gas_cost_eur_kwh, index=df_m.index))
         grid_gas.build_component(n, wacc=self.wacc)
 
+        # Grid Export Component (Selling surplus electricity back to grid at wholesale spot price)
+        spot_price_series = pd.Series(np.asarray(df_m["elec_spot_eur_mwh"], dtype=float), index=df_m.index)
+        grid_export = GridExportComponent(spot_price_series=spot_price_series)
+        grid_export.build_component(n, wacc=self.wacc)
+
         # 2. Demand Sinks (configurable via demand.toml and FixedSizingConfig)
         demand_cfg = self.comp_cfg.demand.model_copy()
         if self.config.fixed_components_sizing.demand_elec_mw is not None:
@@ -615,7 +622,16 @@ class HenkelEnergySystem:
             mc_wind_ppa = n.generators_t.marginal_cost["wind_ppa"] if "wind_ppa" in n.generators_t.marginal_cost.columns else n.generators.loc["wind_ppa", "marginal_cost"]
             wind_ppa_cost = float((p_wind_ppa * mc_wind_ppa).sum()) * annual_weight
 
-        opex_total = elec_cost_total + gas_cost_total + pv_ppa_cost + wind_ppa_cost
+        grid_export_revenue_eur = 0.0
+        grid_export_mwh = 0.0
+        if "grid_export" in n.generators.index and "grid_export" in n.generators_t.p.columns:
+            # PyPSA generator with p_min_pu=-1.0, p_max_pu=0.0 stores export flow as negative p (p <= 0)
+            p_grid_export = np.maximum(0.0, - n.generators_t.p["grid_export"])
+            spot_price_mwh = np.asarray(self.df_market.loc[n.snapshots, "elec_spot_eur_mwh"], dtype=float)
+            grid_export_revenue_eur = float((p_grid_export * spot_price_mwh / 1000.0).sum()) * annual_weight
+            grid_export_mwh = float(p_grid_export.sum() / 1000.0) * annual_weight
+
+        opex_total = elec_cost_total + gas_cost_total + pv_ppa_cost + wind_ppa_cost - grid_export_revenue_eur
 
         # Calculate CAPEX (annualized investment costs)
         capex_total = 0.0
@@ -666,6 +682,8 @@ class HenkelEnergySystem:
             "gas_cost_eur": gas_cost_total,
             "pv_ppa_cost_eur": pv_ppa_cost,
             "wind_ppa_cost_eur": wind_ppa_cost,
+            "grid_export_revenue_eur": grid_export_revenue_eur,
+            "grid_export_mwh": grid_export_mwh,
             "emissions_t_co2": emissions_t_co2,
             "peak_grid_demand_kw": peak_grid_kw,
             "sec19_violation": sec19_violation,

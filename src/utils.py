@@ -158,6 +158,17 @@ def plot_dispatch_stacks(
             bess_p = pd.Series(0.0, index=snapshots)
         ax0.plot(snapshots, bess_p, label="BESS Discharge [kW]", color="#9ecae1", linewidth=2.0)
 
+    # Negative Outgoing Sinks & Export
+    if hasattr(n, "generators") and "grid_export" in n.generators.index:
+        if hasattr(n, "generators_t") and hasattr(n.generators_t, "p") and "grid_export" in n.generators_t.p.columns:
+            p_exp = -np.abs(n.generators_t.p.loc[snapshots, "grid_export"])
+            ax0.plot(snapshots, p_exp, label="Grid Export [kW]", color="#006d2c", linewidth=2.0, linestyle=":")
+
+    if hasattr(n, "links") and "bess_charger" in n.links.index:
+        if hasattr(n, "links_t") and hasattr(n.links_t, "p0") and "bess_charger" in n.links_t.p0.columns:
+            bess_chg = -np.abs(n.links_t.p0.loc[snapshots, "bess_charger"])
+            ax0.plot(snapshots, bess_chg, label="BESS Charge [kW]", color="#756bb1", linewidth=2.0, linestyle=":")
+
     if hasattr(n, "loads") and "demand_elec" in n.loads.index:
         if hasattr(n, "loads_t") and hasattr(n.loads_t, "p_set") and "demand_elec" in n.loads_t.p_set.columns:
             demand_e = n.loads_t.p_set.loc[snapshots, "demand_elec"]
@@ -167,7 +178,7 @@ def plot_dispatch_stacks(
             demand_e = pd.Series(0.0, index=snapshots)
         ax0.plot(snapshots, demand_e, label="Demand Elec [kW]", color="black", linestyle="--", linewidth=2.5)
 
-    ax0.set_title("Electricity Supply & Demand Dynamics (b_elec) [kW]", fontsize=12, fontweight="bold")
+    ax0.set_title("Electricity Supply & Outgoing Flow Dynamics (b_elec) [kW]", fontsize=12, fontweight="bold")
     ax0.set_ylabel("Power [kW]", fontsize=10, fontweight="bold")
     ax0.grid(True, linestyle="--", alpha=0.5)
     ax0.legend(bbox_to_anchor=(1.02, 1.0), loc="upper left", frameon=True, fontsize=9)
@@ -245,48 +256,41 @@ def plot_dispatch_stacks(
             demand_h = pd.Series(0.0, index=snapshots)
         ax2.plot(snapshots, demand_h, label="Demand Heat [kW_th]", color="black", linestyle="--", linewidth=2.5)
 
-    ax2.set_title("Mid-Temperature Process Heat Supply & Demand Dynamics (b_heat_lt) [kW_th]", fontsize=12, fontweight="bold")
-    ax2.set_ylabel("Thermal Power [kW_th]", fontsize=10, fontweight="bold")
+    ax2.set_title("Low-Temperature Process Heat Supply & Demand Dynamics (b_heat_lt) [kW_th]", fontsize=12, fontweight="bold")
     ax2.set_xlabel("Timestamp", fontsize=10, fontweight="bold")
+    ax2.set_ylabel("Thermal Power [kW_th]", fontsize=10, fontweight="bold")
     ax2.grid(True, linestyle="--", alpha=0.5)
     ax2.legend(bbox_to_anchor=(1.02, 1.0), loc="upper left", frameon=True, fontsize=9)
 
-    fig.suptitle(title, fontsize=14, fontweight="bold")
     plt.tight_layout()
-    return fig
+    return fig, axes
 
 
 def plot_dispatch_stacks_interactive(
     results: Dict[str, Any],
-    title: str = "Interactive PyPSA Multi-Carrier Dispatch Stack",
+    title: str = "PyPSA 3-Carrier Energy Dispatch Stack (1-Week Window)",
     mode: str = "interactive",
     start_time: Optional[str] = None,
     duration_days: float = 7.0,
 ):
     """
-    Generates an interactive Plotly dashboard or static 1-week Matplotlib stack figure.
+    Generates an interactive Plotly dynamic stacked area chart or static Matplotlib plot displaying 
+    hourly energy dispatch stacks across Electricity (b_elec), High-Temp Steam (b_steam_ht), 
+    and Low-Temp Heat (b_heat_lt) buses.
     
-    Parameters
-    ----------
-    results : Dict[str, Any]
-        Results dictionary containing 'network' and optional 'config'.
-    title : str
-        Figure title.
-    mode : str
-        'interactive' (Plotly) or 'static' (Matplotlib).
-    start_time : Optional[str]
-        Start timestamp string (e.g. '01/01/2025 00:00:00'). Slices window when mode='static'.
-    duration_days : float
-        Duration in days for static mode plot window (default 7.0 days).
+    Supports both `mode="interactive"` (returns Plotly Figure) and `mode="static"` (returns Matplotlib Figure).
     """
-    if mode.lower() == "static" or not HAS_PLOTLY:
-        return plot_dispatch_stacks(results, title=title, start_time=start_time, duration_days=duration_days)
+    if mode == "static":
+        fig, _ = plot_dispatch_stacks(results, start_time=start_time, duration_days=duration_days)
+        return fig
 
-    if start_time is not None:
+    if "network" not in results:
+        import warnings
         warnings.warn(
-            "The 'start_time' and date-window slicing parameters are active for static viewing mode (mode='static'). "
-            "Rendering full interactive Plotly timeline. Set mode='static' to render sliced 1-week view.",
-            UserWarning,
+            "Legacy results format detected in plot_dispatch_stacks_interactive. "
+            "Please update caller to pass full PyPSA solver dictionary `hes.solve()`. "
+            "Returning empty Plotly figure.",
+            DeprecationWarning,
             stacklevel=2,
         )
 
@@ -300,19 +304,53 @@ def plot_dispatch_stacks_interactive(
         shared_xaxes=True,
     )
 
-    # 1. Electricity
+    # 1. Electricity - Positive Supply Stack
     if "grid_electricity" in n.generators_t.p.columns:
-        fig.add_trace(go.Scatter(x=snapshots, y=n.generators_t.p["grid_electricity"], name="Grid Elec", stackgroup="elec", fillcolor="#3182bd"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=snapshots, y=n.generators_t.p["grid_electricity"], name="Grid Elec", stackgroup="elec_supply", fillcolor="#3182bd"), row=1, col=1)
     if "solar_pv" in n.generators_t.p.columns:
-        fig.add_trace(go.Scatter(x=snapshots, y=n.generators_t.p["solar_pv"], name="Solar PV", stackgroup="elec", fillcolor="#fec44f"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=snapshots, y=n.generators_t.p["solar_pv"], name="Solar PV", stackgroup="elec_supply", fillcolor="#fec44f"), row=1, col=1)
     if "pv_ppa" in n.generators_t.p.columns:
-        fig.add_trace(go.Scatter(x=snapshots, y=n.generators_t.p["pv_ppa"], name="PV PPA", stackgroup="elec", fillcolor="#ffbb78"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=snapshots, y=n.generators_t.p["pv_ppa"], name="PV PPA", stackgroup="elec_supply", fillcolor="#ffbb78"), row=1, col=1)
     if "wind_ppa" in n.generators_t.p.columns:
-        fig.add_trace(go.Scatter(x=snapshots, y=n.generators_t.p["wind_ppa"], name="Wind PPA", stackgroup="elec", fillcolor="#98df8a"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=snapshots, y=n.generators_t.p["wind_ppa"], name="Wind PPA", stackgroup="elec_supply", fillcolor="#98df8a"), row=1, col=1)
     if "gas_chp" in n.links_t.p1.columns:
-        fig.add_trace(go.Scatter(x=snapshots, y=np.abs(n.links_t.p1["gas_chp"]), name="CHP Elec", stackgroup="elec", fillcolor="#e6550d"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=snapshots, y=np.abs(n.links_t.p1["gas_chp"]), name="CHP Elec", stackgroup="elec_supply", fillcolor="#e6550d"), row=1, col=1)
     if "bess_discharger" in n.links_t.p1.columns:
-        fig.add_trace(go.Scatter(x=snapshots, y=np.abs(n.links_t.p1["bess_discharger"]), name="BESS Discharge", stackgroup="elec", fillcolor="#9ecae1"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=snapshots, y=np.abs(n.links_t.p1["bess_discharger"]), name="BESS Discharge", stackgroup="elec_supply", fillcolor="#9ecae1"), row=1, col=1)
+
+    # 1. Electricity - Negative Outgoing Sinks & Export Stack
+    if "grid_export" in n.generators_t.p.columns:
+        # PyPSA stores p <= 0 for grid_export generator
+        p_exp_neg = -np.abs(n.generators_t.p["grid_export"])
+        fig.add_trace(go.Scatter(x=snapshots, y=p_exp_neg, name="Grid Export", stackgroup="elec_sink", fillcolor="#006d2c"), row=1, col=1)
+
+    if "bess_charger" in n.links_t.p0.columns:
+        bess_chg_neg = -np.abs(n.links_t.p0["bess_charger"])
+        fig.add_trace(go.Scatter(x=snapshots, y=bess_chg_neg, name="BESS Charge", stackgroup="elec_sink", fillcolor="#756bb1"), row=1, col=1)
+
+    if "heat_pump" in n.links_t.p0.columns:
+        hp_elec_neg = -np.abs(n.links_t.p0["heat_pump"])
+        fig.add_trace(go.Scatter(x=snapshots, y=hp_elec_neg, name="HTHP Elec Power", stackgroup="elec_sink", fillcolor="#17becf"), row=1, col=1)
+
+    if "electric_boiler" in n.links_t.p0.columns:
+        eb_elec_neg = -np.abs(n.links_t.p0["electric_boiler"])
+        fig.add_trace(go.Scatter(x=snapshots, y=eb_elec_neg, name="E-Boiler Elec Power", stackgroup="elec_sink", fillcolor="#8c564b"), row=1, col=1)
+
+    if "solar_pv" in n.generators.index and hasattr(n.generators_t, "p_max_pu") and "solar_pv" in n.generators_t.p_max_pu.columns:
+        val = n.generators.loc["solar_pv", "p_nom_opt"] if "p_nom_opt" in n.generators.columns else n.generators.loc["solar_pv", "p_nom"]
+        p_opt = float(val) if not pd.isna(val) else float(n.generators.loc["solar_pv", "p_nom"])
+        if p_opt > 0:
+            p_pot = n.generators_t.p_max_pu["solar_pv"] * p_opt
+            p_act = n.generators_t.p["solar_pv"] if "solar_pv" in n.generators_t.p.columns else 0.0
+            p_curt_neg = -np.maximum(0.0, p_pot - p_act)
+            if float(np.abs(p_curt_neg).sum()) > 0:
+                fig.add_trace(go.Scatter(x=snapshots, y=p_curt_neg, name="Solar Curtailed", stackgroup="elec_sink", fillcolor="#7f7f7f"), row=1, col=1)
+
+    if hasattr(n, "loads") and "demand_elec" in n.loads.index:
+        if hasattr(n, "loads_t") and hasattr(n.loads_t, "p_set") and "demand_elec" in n.loads_t.p_set.columns:
+            fig.add_trace(go.Scatter(x=snapshots, y=n.loads_t.p_set["demand_elec"], name="Demand Elec", line=dict(color="black", dash="dash", width=2.5)), row=1, col=1)
+        elif hasattr(n, "loads_t") and hasattr(n.loads_t, "p") and "demand_elec" in n.loads_t.p.columns:
+            fig.add_trace(go.Scatter(x=snapshots, y=n.loads_t.p["demand_elec"], name="Demand Elec", line=dict(color="black", dash="dash", width=2.5)), row=1, col=1)
 
     # 2. HT Steam
     if "gas_chp" in n.links_t.p2.columns:
@@ -321,6 +359,11 @@ def plot_dispatch_stacks_interactive(
         fig.add_trace(go.Scatter(x=snapshots, y=np.abs(n.links_t.p1["gas_boiler"]), name="Gas Boiler", stackgroup="steam", fillcolor="#fd8d3c"), row=2, col=1)
     if "electric_boiler" in n.links_t.p1.columns:
         fig.add_trace(go.Scatter(x=snapshots, y=np.abs(n.links_t.p1["electric_boiler"]), name="E-Boiler", stackgroup="steam", fillcolor="#74c476"), row=2, col=1)
+    if hasattr(n, "loads") and "demand_steam" in n.loads.index:
+        if hasattr(n, "loads_t") and hasattr(n.loads_t, "p_set") and "demand_steam" in n.loads_t.p_set.columns:
+            fig.add_trace(go.Scatter(x=snapshots, y=n.loads_t.p_set["demand_steam"], name="Demand Steam", line=dict(color="black", dash="dash", width=2.5)), row=2, col=1)
+        elif hasattr(n, "loads_t") and hasattr(n.loads_t, "p") and "demand_steam" in n.loads_t.p.columns:
+            fig.add_trace(go.Scatter(x=snapshots, y=n.loads_t.p["demand_steam"], name="Demand Steam", line=dict(color="black", dash="dash", width=2.5)), row=2, col=1)
 
     # 3. LT Heat
     if "heat_pump" in n.links_t.p1.columns:
@@ -329,6 +372,11 @@ def plot_dispatch_stacks_interactive(
         fig.add_trace(go.Scatter(x=snapshots, y=np.abs(n.links_t.p1["steam_to_heat_exchanger"]), name="Steam-HX Heat", stackgroup="heat", fillcolor="#bcbd22"), row=3, col=1)
     if "tes_discharger" in n.links_t.p1.columns:
         fig.add_trace(go.Scatter(x=snapshots, y=np.abs(n.links_t.p1["tes_discharger"]), name="TES Discharge", stackgroup="heat", fillcolor="#a1d99b"), row=3, col=1)
+    if hasattr(n, "loads") and "demand_heat" in n.loads.index:
+        if hasattr(n, "loads_t") and hasattr(n.loads_t, "p_set") and "demand_heat" in n.loads_t.p_set.columns:
+            fig.add_trace(go.Scatter(x=snapshots, y=n.loads_t.p_set["demand_heat"], name="Demand Heat", line=dict(color="black", dash="dash", width=2.5)), row=3, col=1)
+        elif hasattr(n, "loads_t") and hasattr(n.loads_t, "p") and "demand_heat" in n.loads_t.p.columns:
+            fig.add_trace(go.Scatter(x=snapshots, y=n.loads_t.p["demand_heat"], name="Demand Heat", line=dict(color="black", dash="dash", width=2.5)), row=3, col=1)
 
     fig.update_layout(height=800, title_text=title, template="plotly_white", hovermode="x unified")
     return fig
@@ -440,55 +488,92 @@ plot_dispatch_with_market_prices_interactive = plot_market_prices_interactive
 
 
 
-def plot_storage_dynamics_interactive(results: Dict[str, Any], title: str = "BESS & TES State-of-Charge (SOC) Dynamics"):
+def plot_storage_dynamics_interactive(
+    results: Dict[str, Any],
+    title: str = "BESS & TES State-of-Charge (SOC) Dynamics",
+    mode: str = "interactive",
+    start_time: Optional[str] = None,
+    duration_days: float = 7.0,
+):
     """Generates interactive SOC plot for Battery and Thermal Energy Storage."""
     n = results["network"]
-    snapshots = n.snapshots
+    config = results.get("config", None)
+    
+    if mode.lower() == "static" or not HAS_PLOTLY:
+        snapshots = _slice_snapshots_by_window(n, start_time=start_time, duration_days=duration_days, config=config)
+    else:
+        snapshots = n.snapshots
 
-    if not HAS_PLOTLY:
+    bess_soc = n.stores_t.e.loc[snapshots, "bess"] if hasattr(n, "stores_t") and hasattr(n.stores_t, "e") and "bess" in n.stores_t.e.columns else None
+    tes_soc = n.stores_t.e.loc[snapshots, "tes"] if hasattr(n, "stores_t") and hasattr(n.stores_t, "e") and "tes" in n.stores_t.e.columns else None
+
+    if mode.lower() == "static" or not HAS_PLOTLY:
         fig, ax = plt.subplots(figsize=(12, 5))
-        if "bess" in n.stores_t.e.columns:
-            ax.plot(snapshots, n.stores_t.e["bess"], label="BESS SOC [kWh]", color="#3182bd", linewidth=2)
-        if "tes" in n.stores_t.e.columns:
-            ax.plot(snapshots, n.stores_t.e["tes"], label="TES SOC [kWh_th]", color="#2ca02c", linewidth=2)
+        if bess_soc is not None:
+            ax.plot(snapshots, bess_soc, label="BESS SOC [kWh]", color="#3182bd", linewidth=2)
+        if tes_soc is not None:
+            ax.plot(snapshots, tes_soc, label="TES SOC [kWh_th]", color="#2ca02c", linewidth=2)
         ax.set_title(title)
         ax.set_ylabel("Energy Stored [kWh]")
         ax.grid(True, linestyle="--")
         ax.legend()
+        plt.tight_layout()
         return fig
 
     fig = go.Figure()
-    if "bess" in n.stores_t.e.columns:
-        fig.add_trace(go.Scatter(x=snapshots, y=n.stores_t.e["bess"], name="BESS SOC [kWh]", line=dict(color="#3182bd", width=2.5)))
-    if "tes" in n.stores_t.e.columns:
-        fig.add_trace(go.Scatter(x=snapshots, y=n.stores_t.e["tes"], name="TES SOC [kWh_th]", line=dict(color="#2ca02c", width=2.5)))
+    if bess_soc is not None:
+        fig.add_trace(go.Scatter(x=snapshots, y=bess_soc, name="BESS SOC [kWh]", line=dict(color="#3182bd", width=2.5)))
+    if tes_soc is not None:
+        fig.add_trace(go.Scatter(x=snapshots, y=tes_soc, name="TES SOC [kWh_th]", line=dict(color="#2ca02c", width=2.5)))
 
     fig.update_layout(title=title, xaxis_title="Timestamp", yaxis_title="State of Charge [kWh]", template="plotly_white")
     return fig
 
 
-def plot_price_duration_curves_interactive(results: Dict[str, Any], title: str = "Electricity Spot & Marginal Bus Price Duration Curve"):
-    """Plots marginal price duration curve from PyPSA bus shadow prices."""
+def plot_price_duration_curves_interactive(
+    results: Dict[str, Any],
+    title: str = "Electricity Spot & Marginal Bus Price Duration Curve",
+    mode: str = "interactive",
+    start_time: Optional[str] = None,
+    duration_days: float = 7.0,
+):
+    """Plots marginal price duration curves for market spot price and solved bus shadow price [EUR/MWh]."""
     n = results["network"]
-    snapshots = n.snapshots
+    config = results.get("config", None)
+
+    if mode.lower() == "static" or not HAS_PLOTLY:
+        snapshots = _slice_snapshots_by_window(n, start_time=start_time, duration_days=duration_days, config=config)
+    else:
+        snapshots = n.snapshots
 
     grid_mc = n.generators_t.marginal_cost["grid_electricity"] if "grid_electricity" in n.generators_t.marginal_cost.columns else n.generators.loc["grid_electricity", "marginal_cost"]
     price_series = pd.Series(grid_mc, index=snapshots) * 1000.0  # EUR/MWh
     sorted_prices = price_series.sort_values(ascending=False).values
     hours = np.arange(1, len(sorted_prices) + 1)
 
-    if not HAS_PLOTLY:
+    bus_mp_series = None
+    if hasattr(n, "buses_t") and hasattr(n.buses_t, "marginal_price") and "b_elec" in n.buses_t.marginal_price.columns:
+        bus_mp = n.buses_t.marginal_price.loc[snapshots, "b_elec"] * 1000.0  # EUR/MWh
+        bus_mp_series = bus_mp.sort_values(ascending=False).values
+
+    if mode.lower() == "static" or not HAS_PLOTLY:
         fig, ax = plt.subplots(figsize=(10, 5))
-        ax.plot(hours, sorted_prices, color="#d62728", linewidth=2, label="Grid Elec Price [EUR/MWh]")
+        ax.plot(hours, sorted_prices, color="#3182bd", linewidth=2, label="Grid Spot Price [EUR/MWh]")
+        if bus_mp_series is not None:
+            ax.plot(hours, bus_mp_series, color="#d62728", linewidth=2, linestyle="--", label="Electricity Bus LMP (Shadow Price) [EUR/MWh]")
         ax.set_title(title)
         ax.set_xlabel("Hours")
         ax.set_ylabel("Price [EUR/MWh]")
         ax.grid(True, linestyle="--")
+        ax.legend()
+        plt.tight_layout()
         return fig
 
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=hours, y=sorted_prices, name="Grid Electricity Price", line=dict(color="#d62728", width=2.5)))
-    fig.update_layout(title=title, xaxis_title="Hours", yaxis_title="Electricity Price [EUR/MWh]", template="plotly_white")
+    fig.add_trace(go.Scatter(x=hours, y=sorted_prices, name="Grid Spot Price", line=dict(color="#3182bd", width=2.5)))
+    if bus_mp_series is not None:
+        fig.add_trace(go.Scatter(x=hours, y=bus_mp_series, name="Elec Bus LMP (Shadow Price)", line=dict(color="#d62728", width=2.5, dash="dash")))
+    fig.update_layout(title=title, xaxis_title="Hours", yaxis_title="Price [EUR/MWh]", template="plotly_white")
     return fig
 
 
@@ -518,13 +603,26 @@ def plot_asset_economics_interactive(results: Dict[str, Any], title: str = "PyPS
     return fig
 
 
-def plot_sec19_grid_fee_protection_interactive(results: Dict[str, Any], threshold_kw: float = 60000.0, title: str = "Sec19 StromNEV Peak Grid Demand Profile"):
+def plot_sec19_grid_fee_protection_interactive(
+    results: Dict[str, Any],
+    threshold_kw: float = 60000.0,
+    title: str = "Sec19 StromNEV Peak Grid Demand Profile",
+    mode: str = "interactive",
+    start_time: Optional[str] = None,
+    duration_days: float = 7.0,
+):
     """Plots hourly grid electricity import profile against 60 MW continuous baseload threshold."""
     n = results["network"]
-    snapshots = n.snapshots
-    grid_p = n.generators_t.p["grid_electricity"]
+    config = results.get("config", None)
 
-    if not HAS_PLOTLY:
+    if mode.lower() == "static" or not HAS_PLOTLY:
+        snapshots = _slice_snapshots_by_window(n, start_time=start_time, duration_days=duration_days, config=config)
+    else:
+        snapshots = n.snapshots
+
+    grid_p = n.generators_t.p.loc[snapshots, "grid_electricity"] if "grid_electricity" in n.generators_t.p.columns else pd.Series(0.0, index=snapshots)
+
+    if mode.lower() == "static" or not HAS_PLOTLY:
         fig, ax = plt.subplots(figsize=(12, 5))
         ax.plot(snapshots, grid_p, label="Grid Elec Import [kW]", color="#3182bd", linewidth=1.5)
         ax.axhline(threshold_kw, color="red", linestyle="--", linewidth=2, label=f"Sec19 Threshold ({threshold_kw/1000:.0f} MW)")
@@ -532,6 +630,7 @@ def plot_sec19_grid_fee_protection_interactive(results: Dict[str, Any], threshol
         ax.set_ylabel("Grid Power [kW]")
         ax.grid(True, linestyle="--")
         ax.legend()
+        plt.tight_layout()
         return fig
 
     fig = go.Figure()
@@ -576,10 +675,14 @@ def calculate_curtailment_metrics(res: Dict[str, Any]) -> Tuple[float, float]:
 
     if hasattr(n, "generators_t") and hasattr(n.generators_t, "p"):
         for gen in n.generators.index:
-            if gen in ["grid_electricity", "grid_gas"] or gen.endswith("_dump"):
+            if gen in ["grid_electricity", "grid_gas", "grid_export"] or gen.endswith("_dump"):
                 continue
             p_actual = float(n.generators_t.p[gen].sum()) if gen in n.generators_t.p.columns else 0.0
-            p_opt = float(n.generators.loc[gen, "p_nom_opt" if "p_nom_opt" in n.generators.columns else "p_nom"])
+            
+            # Handle potential NaN in p_nom_opt safely
+            val = n.generators.loc[gen, "p_nom_opt"] if "p_nom_opt" in n.generators.columns else n.generators.loc[gen, "p_nom"]
+            p_opt = float(val) if not pd.isna(val) else float(n.generators.loc[gen, "p_nom"])
+
             if hasattr(n.generators_t, "p_max_pu") and gen in n.generators_t.p_max_pu.columns:
                 p_potential = float((n.generators_t.p_max_pu[gen] * p_opt).sum())
             else:
@@ -592,10 +695,9 @@ def calculate_curtailment_metrics(res: Dict[str, Any]) -> Tuple[float, float]:
         if "grid_electricity" in n.generators_t.p.columns:
             tot_elec_generated += float(n.generators_t.p["grid_electricity"].sum())
 
-    if hasattr(n, "links_t") and hasattr(n.links_t, "p0") and "gas_chp" in n.links.index:
-        eta_el = float(n.links.loc["gas_chp", "efficiency"]) if "efficiency" in n.links.columns else 0.25
-        chp_gas_in = float(n.links_t.p0["gas_chp"].sum()) if "gas_chp" in n.links_t.p0.columns else 0.0
-        tot_elec_generated += chp_gas_in * eta_el
+    if hasattr(n, "links_t") and hasattr(n.links_t, "p1") and "gas_chp" in n.links.index:
+        if "gas_chp" in n.links_t.p1.columns:
+            tot_elec_generated += float(np.abs(n.links_t.p1["gas_chp"]).sum())
 
     elec_curtailment_pct = (tot_elec_curtailed / tot_elec_generated * 100.0) if tot_elec_generated > 0 else 0.0
 
@@ -610,24 +712,18 @@ def calculate_curtailment_metrics(res: Dict[str, Any]) -> Tuple[float, float]:
                 if dump_val > 0:
                     tot_heat_curtailed += dump_val
 
-    if hasattr(n, "links_t") and hasattr(n.links_t, "p0"):
-        if "gas_chp" in n.links.index:
-            eta_th = float(n.links.loc["gas_chp", "efficiency2"]) if "efficiency2" in n.links.columns else 0.50
-            chp_gas_in = float(n.links_t.p0["gas_chp"].sum()) if "gas_chp" in n.links_t.p0.columns else 0.0
-            tot_heat_generated += chp_gas_in * eta_th
+    if hasattr(n, "links_t"):
+        if "gas_chp" in n.links.index and hasattr(n.links_t, "p2") and "gas_chp" in n.links_t.p2.columns:
+            tot_heat_generated += float(np.abs(n.links_t.p2["gas_chp"]).sum())
 
-        if "gas_boiler" in n.links.index:
-            eta_th = float(n.links.loc["gas_boiler", "efficiency"]) if "efficiency" in n.links.columns else 0.90
-            boiler_gas_in = float(n.links_t.p0["gas_boiler"].sum()) if "gas_boiler" in n.links_t.p0.columns else 0.0
-            tot_heat_generated += boiler_gas_in * eta_th
+        if "gas_boiler" in n.links.index and hasattr(n.links_t, "p1") and "gas_boiler" in n.links_t.p1.columns:
+            tot_heat_generated += float(np.abs(n.links_t.p1["gas_boiler"]).sum())
 
-        if "electric_boiler" in n.links.index:
-            eboiler_out = float(n.links_t.p1["electric_boiler"].sum()) if "electric_boiler" in n.links_t.p1.columns else 0.0
-            tot_heat_generated += eboiler_out
+        if "electric_boiler" in n.links.index and hasattr(n.links_t, "p1") and "electric_boiler" in n.links_t.p1.columns:
+            tot_heat_generated += float(np.abs(n.links_t.p1["electric_boiler"]).sum())
 
-        if "heat_pump" in n.links.index:
-            hthp_out = float(n.links_t.p1["heat_pump"].sum()) if "heat_pump" in n.links_t.p1.columns else 0.0
-            tot_heat_generated += hthp_out
+        if "heat_pump" in n.links.index and hasattr(n.links_t, "p1") and "heat_pump" in n.links_t.p1.columns:
+            tot_heat_generated += float(np.abs(n.links_t.p1["heat_pump"]).sum())
 
     tot_heat_potential = tot_heat_generated + tot_heat_curtailed
     heat_curtailment_pct = (tot_heat_curtailed / tot_heat_potential * 100.0) if tot_heat_potential > 0 else 0.0
@@ -635,14 +731,87 @@ def calculate_curtailment_metrics(res: Dict[str, Any]) -> Tuple[float, float]:
     return round(elec_curtailment_pct, 2), round(heat_curtailment_pct, 2)
 
 
+def calculate_renewable_and_export_metrics(res: Dict[str, Any]) -> Dict[str, float]:
+    """
+    Calculates detailed renewable energy and grid export metrics:
+    - Grid Export Volume (MWh)
+    - Grid Export Revenue (EUR)
+    - Renewable Self-Consumption Rate (%)
+    - Renewable Autarky / Green Coverage Rate (%)
+    - Onsite PV Inverter Curtailment Rate (%)
+    """
+    if not isinstance(res, dict) or "network" not in res:
+        return {
+            "grid_export_mwh": 0.0,
+            "grid_export_revenue_eur": 0.0,
+            "self_consumption_pct": 0.0,
+            "autarky_pct": 0.0,
+            "onsite_pv_curtailment_pct": 0.0,
+        }
+
+    n = res["network"]
+    grid_export_mwh = float(res.get("grid_export_mwh", 0.0))
+    grid_export_revenue_eur = float(res.get("grid_export_revenue_eur", 0.0))
+
+    # Calculate total potential renewable generation (Onsite PV + PV PPA + Wind PPA)
+    tot_renewable_potential_kwh = 0.0
+    tot_renewable_consumed_kwh = 0.0
+    onsite_pv_potential_kwh = 0.0
+    onsite_pv_curtailed_kwh = 0.0
+
+    if hasattr(n, "generators_t") and hasattr(n.generators_t, "p"):
+        for gen in ["solar_pv", "pv_ppa", "wind_ppa"]:
+            if gen in n.generators.index:
+                val = n.generators.loc[gen, "p_nom_opt"] if "p_nom_opt" in n.generators.columns else n.generators.loc[gen, "p_nom"]
+                p_opt = float(val) if not pd.isna(val) else float(n.generators.loc[gen, "p_nom"])
+                p_act = float(n.generators_t.p[gen].sum()) if gen in n.generators_t.p.columns else 0.0
+
+                if hasattr(n.generators_t, "p_max_pu") and gen in n.generators_t.p_max_pu.columns:
+                    p_pot = float((n.generators_t.p_max_pu[gen] * p_opt).sum())
+                else:
+                    p_pot = p_act
+
+                tot_renewable_potential_kwh += p_pot
+
+                if gen == "solar_pv":
+                    onsite_pv_potential_kwh += p_pot
+                    curt = max(0.0, p_pot - p_act)
+                    onsite_pv_curtailed_kwh += curt
+
+    # Total grid export in kWh
+    export_kwh = grid_export_mwh * 1000.0
+
+    # Self-consumed green energy = Total Renewable Potential - Grid Export - Onsite PV Curtailment
+    tot_renewable_consumed_kwh = max(0.0, tot_renewable_potential_kwh - export_kwh - onsite_pv_curtailed_kwh)
+
+    self_consumption_pct = (tot_renewable_consumed_kwh / tot_renewable_potential_kwh * 100.0) if tot_renewable_potential_kwh > 0 else 0.0
+    onsite_pv_curtailment_pct = (onsite_pv_curtailed_kwh / onsite_pv_potential_kwh * 100.0) if onsite_pv_potential_kwh > 0 else 0.0
+
+    # Total site electricity demand in kWh (60 MW continuous over snapshots)
+    num_snapshots = len(n.snapshots) if hasattr(n, "snapshots") else 8760
+    annual_weight = float(n.snapshot_weightings.objective.iloc[0]) if hasattr(n, "snapshot_weightings") and hasattr(n.snapshot_weightings, "objective") and hasattr(n.snapshot_weightings.objective, "iloc") else 1.0
+    tot_site_demand_kwh = 60000.0 * num_snapshots * annual_weight
+    autarky_pct = (tot_renewable_consumed_kwh / tot_site_demand_kwh * 100.0) if tot_site_demand_kwh > 0 else 0.0
+
+    return {
+        "grid_export_mwh": round(grid_export_mwh, 2),
+        "grid_export_revenue_eur": round(grid_export_revenue_eur, 2),
+        "self_consumption_pct": round(self_consumption_pct, 2),
+        "autarky_pct": round(autarky_pct, 2),
+        "onsite_pv_curtailment_pct": round(onsite_pv_curtailment_pct, 2),
+    }
+
+
 def create_summary_dataframe(results_dict: Dict[str, Dict[str, Any]], annual_tonnage: float = 450000.0) -> pd.DataFrame:
-    """Compiles scenario results into a clean financial comparison table (EUR/ton, OPEX, CAPEX, CO2, Curtailment)."""
+    """Compiles scenario results into a clean financial comparison table (EUR/ton, OPEX, CAPEX, CO2, Export, Curtailment)."""
     rows = []
     for scenario_name, res in results_dict.items():
         tot_cost = res["total_cost_eur"]
         eff_tonnage = get_period_effective_tonnage(res, annual_tonnage=annual_tonnage)
         cost_per_ton = tot_cost / eff_tonnage if eff_tonnage > 0 else 0.0
         elec_curt_pct, heat_curt_pct = calculate_curtailment_metrics(res)
+        ren_metrics = calculate_renewable_and_export_metrics(res)
+
         rows.append({
             "Scenario": scenario_name,
             "Total Cost (EUR)": tot_cost,
@@ -651,6 +820,10 @@ def create_summary_dataframe(results_dict: Dict[str, Dict[str, Any]], annual_ton
             "Annualized CAPEX (EUR)": res["capex_annualized_eur"],
             "Emissions (tCO2)": res["emissions_t_co2"],
             "Peak Grid Demand (MW)": res["peak_grid_demand_kw"] / 1000.0,
+            "Grid Export (MWh)": ren_metrics["grid_export_mwh"],
+            "Grid Export Rev (EUR)": ren_metrics["grid_export_revenue_eur"],
+            "Self-Consumption (%)": ren_metrics["self_consumption_pct"],
+            "Autarky (%)": ren_metrics["autarky_pct"],
             "Curtailed Elec (%)": elec_curt_pct,
             "Curtailed Heat (%)": heat_curt_pct,
             "Sec19 Compliant": not res["sec19_violation"],
@@ -768,21 +941,48 @@ def create_pypsa_asset_sizing_table(results_or_net: Any) -> pd.DataFrame:
     asset_rows = []
     if hasattr(n, "generators") and not n.generators.empty:
         for name, row in n.generators.iterrows():
-            p_opt = float(getattr(row, "p_nom_opt", getattr(row, "p_nom", 0.0)))
+            val = row.get("p_nom_opt", np.nan)
+            if pd.isna(val) or val is None:
+                val = row.get("p_nom", 0.0)
+            p_opt = float(val) if not pd.isna(val) else 0.0
+            
             # Exclude grid imports and emergency dump generators
             if p_opt > 0 and name not in ["grid_electricity", "grid_gas"] and not name.endswith("_dump"):
-                asset_rows.append({"Asset Component": name.upper(), "Optimal Sizing Capacity": f"{p_opt:,.2f}", "Unit": "kWp" if "pv" in name.lower() else "kW"})
+                unit = "kWp" if "pv" in name.lower() else "kW"
+                asset_rows.append({"Asset Component": name.upper(), "Optimal Sizing Capacity": f"{p_opt:,.2f}", "Unit": unit})
 
     if hasattr(n, "links") and not n.links.empty:
         for name, row in n.links.iterrows():
-            p_opt = float(getattr(row, "p_nom_opt", getattr(row, "p_nom", 0.0)))
+            val = row.get("p_nom_opt", np.nan)
+            if pd.isna(val) or val is None:
+                val = row.get("p_nom", 0.0)
+            p_opt = float(val) if not pd.isna(val) else 0.0
+            
             if p_opt > 0 and name != "steam_to_heat_exchanger":
-                unit = "kW" if "bess" in name.lower() else "kW_th"
-                asset_rows.append({"Asset Component": name.upper(), "Optimal Sizing Capacity": f"{p_opt:,.2f}", "Unit": unit})
+                # Convert raw input link capacity to output rating
+                if name == "gas_chp":
+                    eta_el = float(row.get("efficiency", 0.40))
+                    cap_el = p_opt * eta_el
+                    asset_rows.append({"Asset Component": name.upper(), "Optimal Sizing Capacity": f"{cap_el:,.2f}", "Unit": "kW_el"})
+                elif name == "heat_pump":
+                    cop = float(row.get("efficiency", 2.8))
+                    cap_th = p_opt * cop
+                    asset_rows.append({"Asset Component": name.upper(), "Optimal Sizing Capacity": f"{cap_th:,.2f}", "Unit": "kW_th"})
+                elif name in ["gas_boiler", "electric_boiler"]:
+                    eff = float(row.get("efficiency", 0.90))
+                    cap_th = p_opt * eff
+                    asset_rows.append({"Asset Component": name.upper(), "Optimal Sizing Capacity": f"{cap_th:,.2f}", "Unit": "kW_th"})
+                else:
+                    unit = "kW" if "bess" in name.lower() else "kW_th"
+                    asset_rows.append({"Asset Component": name.upper(), "Optimal Sizing Capacity": f"{p_opt:,.2f}", "Unit": unit})
 
     if hasattr(n, "stores") and not n.stores.empty:
         for name, row in n.stores.iterrows():
-            e_opt = float(getattr(row, "e_nom_opt", getattr(row, "e_nom", 0.0)))
+            val = row.get("e_nom_opt", np.nan)
+            if pd.isna(val) or val is None:
+                val = row.get("e_nom", 0.0)
+            e_opt = float(val) if not pd.isna(val) else 0.0
+            
             if e_opt > 0:
                 unit = "kWh_th" if "tes" in name.lower() else "kWh"
                 asset_rows.append({"Asset Component": name.upper(), "Optimal Sizing Capacity": f"{e_opt:,.2f}", "Unit": unit})
@@ -809,25 +1009,25 @@ def explore_network_interactive(results_or_net: Any, active_only: bool = True):
         n_disp = n.copy()
         # Remove extendable generators with zero capacity built
         if hasattr(n_disp, "generators") and "p_nom_opt" in n_disp.generators.columns:
-            unbuilt_gens = n_disp.generators[
-                (n_disp.generators.get("p_nom_extendable", False)) & (n_disp.generators.p_nom_opt <= 1e-3)
-            ].index
+            has_ext = "p_nom_extendable" in n_disp.generators.columns
+            mask = (n_disp.generators["p_nom_extendable"]) if has_ext else pd.Series(False, index=n_disp.generators.index)
+            unbuilt_gens = n_disp.generators[mask & (n_disp.generators.p_nom_opt <= 1e-3)].index
             for g in list(unbuilt_gens):
                 n_disp.remove("Generator", g)
 
         # Remove extendable links with zero capacity built
         if hasattr(n_disp, "links") and "p_nom_opt" in n_disp.links.columns:
-            unbuilt_links = n_disp.links[
-                (n_disp.links.get("p_nom_extendable", False)) & (n_disp.links.p_nom_opt <= 1e-3)
-            ].index
+            has_ext = "p_nom_extendable" in n_disp.links.columns
+            mask = (n_disp.links["p_nom_extendable"]) if has_ext else pd.Series(False, index=n_disp.links.index)
+            unbuilt_links = n_disp.links[mask & (n_disp.links.p_nom_opt <= 1e-3)].index
             for l in list(unbuilt_links):
                 n_disp.remove("Link", l)
 
         # Remove extendable stores with zero capacity built
         if hasattr(n_disp, "stores") and "e_nom_opt" in n_disp.stores.columns:
-            unbuilt_stores = n_disp.stores[
-                (n_disp.stores.get("e_nom_extendable", False)) & (n_disp.stores.e_nom_opt <= 1e-3)
-            ].index
+            has_ext = "e_nom_extendable" in n_disp.stores.columns
+            mask = (n_disp.stores["e_nom_extendable"]) if has_ext else pd.Series(False, index=n_disp.stores.index)
+            unbuilt_stores = n_disp.stores[mask & (n_disp.stores.e_nom_opt <= 1e-3)].index
             for s in list(unbuilt_stores):
                 n_disp.remove("Store", s)
     else:
@@ -1010,7 +1210,7 @@ def plot_network_schematic(
         "gas_boiler": {"pos": (5.5, 8.8), "color": "#fd8d3c", "type": "links", "prefix": "Gas Boiler", "unit": "MW_th", "custom_boiler": True},
         "electric_boiler": {"pos": (5.5, 5), "color": "#74c476", "type": "links", "prefix": "Electric Boiler", "unit": "MW_th"},
         "heat_pump": {"pos": (5.5, 3.5), "color": "#2ca02c", "type": "links", "prefix": "HTHP Heat Pump", "unit": "MW_th"},
-        "steam_to_heat_exchanger": {"pos": (7, 4.5), "color": "#98df8a", "type": "links", "label": "Steam Exchanger\n(95% Eff)"},
+        "steam_to_heat_exchanger": {"pos": (7, 4.5), "color": "#98df8a", "type": "links", "label": "Steam Exchanger\n(98% Eff)"},
 
         # Storage & Demand Sinks
         "bess": {"pos": (4, 3.5), "color": "#9ecae1", "type": "stores", "prefix": "BESS Storage", "unit": "MWh"},
@@ -1046,6 +1246,14 @@ def plot_network_schematic(
                     eta_th = float(row.get("efficiency", 0.90))
                     boiler_th = cap * eta_th
                     info["label"] = f"Gas Boiler\n({boiler_th/1000:.2f} MW_th)"
+                elif name == "heat_pump":
+                    cop = float(row.get("efficiency", 2.8))
+                    hp_th = cap * cop
+                    info["label"] = f"HTHP Heat Pump\n({hp_th/1000:.2f} MW_th)"
+                elif name == "electric_boiler":
+                    eff = float(row.get("efficiency", 0.99))
+                    eb_th = cap * eff
+                    info["label"] = f"Electric Boiler\n({eb_th/1000:.2f} MW_th)"
                 elif "prefix" in info:
                     unit = info.get("unit", "MW")
                     if info["type"] == "stores":

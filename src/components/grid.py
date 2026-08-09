@@ -61,6 +61,37 @@ class GridGasComponent(BaseEnergyComponent):
         )
 
 
+class GridExportConfig(BaseComponentConfig):
+    name: str = "grid_export"
+    bus: str = "b_elec"
+    p_nom: float = 1e6  # High upper bound for grid export capacity (kW)
+
+
+class GridExportComponent(BaseEnergyComponent):
+    """Electricity grid export generator to sell surplus power at EPEX spot prices."""
+
+    def __init__(self, spot_price_series: pd.Series, config: Optional[GridExportConfig] = None):
+        cfg = config or GridExportConfig()
+        super().__init__(cfg.name, cfg)
+        self.spot_price_series = spot_price_series
+
+    def build_component(self, network: pypsa.Network, wacc: float = 0.07) -> None:
+        # In PyPSA, export power flow is negative (p <= 0 out of bus).
+        # Cost added to objective = p * marginal_cost.
+        # When p = -100 kW (exporting) and spot price = +0.10 €/kWh, cost = (-100) * (+0.10) = -10 € (REVENUE).
+        export_mc_kwh = self.spot_price_series.values / 1000.0
+
+        network.add(
+            "Generator",
+            self.name,
+            bus=self.config.bus,
+            p_nom=self.config.p_nom,
+            marginal_cost=export_mc_kwh,
+            p_min_pu=-1.0,
+            p_max_pu=0.0,
+        )
+
+
 class PVPPAConfig(BaseComponentConfig):
     name: str = "pv_ppa"
     bus: str = "b_elec"
@@ -104,6 +135,7 @@ class PVPPAComponent(BaseEnergyComponent):
                 p_nom_extendable=True,
                 p_nom_min=self.ppa_config.min_capacity_kw,
                 p_nom_max=self.ppa_config.max_capacity_kw,
+                p_min_pu=self.pv_profile.values,  # Must-Run generation
                 p_max_pu=self.pv_profile.values,
                 marginal_cost=marginal_cost_kwh,
                 capital_cost=capital_cost,
@@ -115,6 +147,7 @@ class PVPPAComponent(BaseEnergyComponent):
                 bus=self.ppa_config.bus,
                 p_nom=self.ppa_config.installed_capacity_kw,
                 p_nom_extendable=False,
+                p_min_pu=self.pv_profile.values,  # Must-Run generation
                 p_max_pu=self.pv_profile.values,
                 marginal_cost=marginal_cost_kwh,
             )
@@ -141,6 +174,7 @@ class WindPPAComponent(BaseEnergyComponent):
                 p_nom_extendable=True,
                 p_nom_min=self.ppa_config.min_capacity_kw,
                 p_nom_max=self.ppa_config.max_capacity_kw,
+                p_min_pu=self.wind_profile.values,  # Must-Run generation
                 p_max_pu=self.wind_profile.values,
                 marginal_cost=marginal_cost_kwh,
                 capital_cost=capital_cost,
@@ -152,6 +186,8 @@ class WindPPAComponent(BaseEnergyComponent):
                 bus=self.ppa_config.bus,
                 p_nom=self.ppa_config.installed_capacity_kw,
                 p_nom_extendable=False,
+                p_min_pu=self.wind_profile.values,  # Must-Run generation
                 p_max_pu=self.wind_profile.values,
                 marginal_cost=marginal_cost_kwh,
             )
+

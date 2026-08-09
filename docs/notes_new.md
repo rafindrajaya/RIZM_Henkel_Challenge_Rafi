@@ -28,8 +28,6 @@
     - Explain the possible outlook of doing imagining a carbon neutral manufacturing: due to land limitation, most probably will require multiple PPA subscription, carbon capture investment, or carbon credits trading
 
 - Do sensitivity analysis of using the sec19 or not, some others, in the same Jupyternotebook too, only have two different notebook file fr: 1 interactive plots, the other 1 static for someone who does not want to clone the results (DONE)
-
-## TODO 2:
 - The online repository can't load the interactive plot, so I have to plot interactive and non-interactive (so two notebooks in the end?) brainstorm what would ne best pracitce
     - Copy the notebook to use the static plot instead of the interactive one: Just choose one week representative from the one year period
 # Render Interactive PyPSA Multi-Carrier Dispatch Stack
@@ -46,16 +44,21 @@ fig_cost = plot_scenario_cost_per_ton_interactive(
     {"Baseline": baseline_eur_per_ton_sec19, "Operation Hub": meta_op},
     title="Unit Production Cost Comparison (€/ton)"
 )
+- Attach the google earth view reference for the possible onsite PV rooftop addition
 
 
-
-
-
+## TODO 2:
+- I got to validate the result again, especiall investment hub since I just got a new result again
+- Fix the executive summary with the new results
+- Explain why am I fixing the max capacity of PPA to 25 MW and 20 MW?
+- Do the same fixes for the static challenge file
 - Do the notes on content
 - Add the aerial view to the top of the readme.md or challenge?
-- Attach the google earth view reference for the possible onsite PV rooftop addition
-- Check the utils function and make sure they are logical and accurate
 - Check the components config and abstraction to make sure there is logical error
+- Explain in the executive summary section that by knowing the exact capacity and operation of the plant, it is also possible to model heat recovery scheme where a process consumes heat and produces recoverable heat
+- Now there is a problem of silmutaneous chargin and discharging, I have to devise a way to prevent this without using binary (small cost penalty or efficiency penalty), gotta check this with grid import and export as well
+- Check how I can use the utils that display the metrics such as self consumption, export total, etc
+- After the fix, why does the solve still decide to invest heavily on PPA?
 
 
 ## Finishing
@@ -96,6 +99,6 @@ Final testing of logical accuracy, reasoning, and deliveries of the challenge de
 - Create a UML class diagarm in docs and sequence diagram or other insightful diagram in the readme.md using mermaid
 
 ### Not urgent
-- - CHP FixedSizingConfig should only just be one value of the the combined heat and power sizing that is then get separated into the COP of elec and heat. For instance, if the fixed sizing is 50 MW, then 
+- CHP FixedSizingConfig should only just be one value of the the combined heat and power sizing that is then get separated into the COP of elec and heat. For instance, if the fixed sizing is 50 MW, then 
 - Is there a way to simulate load flexibility that should always be above 80% demand capacity in PyPSA for all the designed demands?
 - Create a CI test that checks whether both the operation hub and decision hub framework can converge optimally under different sizing configuration for a 1 week operation and that the result is not multiple magnitude off from the range of possible results
