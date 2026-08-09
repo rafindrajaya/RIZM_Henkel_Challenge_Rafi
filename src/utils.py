@@ -169,6 +169,26 @@ def plot_dispatch_stacks(
             bess_chg = -np.abs(n.links_t.p0.loc[snapshots, "bess_charger"])
             ax0.plot(snapshots, bess_chg, label="BESS Charge [kW]", color="#756bb1", linewidth=2.0, linestyle=":")
 
+    if hasattr(n, "links") and "heat_pump" in n.links.index:
+        if hasattr(n, "links_t") and hasattr(n.links_t, "p0") and "heat_pump" in n.links_t.p0.columns:
+            hp_elec_neg = -np.abs(n.links_t.p0.loc[snapshots, "heat_pump"])
+            ax0.plot(snapshots, hp_elec_neg, label="HTHP Elec Power [kW]", color="#17becf", linewidth=2.0, linestyle=":")
+
+    if hasattr(n, "links") and "electric_boiler" in n.links.index:
+        if hasattr(n, "links_t") and hasattr(n.links_t, "p0") and "electric_boiler" in n.links_t.p0.columns:
+            eb_elec_neg = -np.abs(n.links_t.p0.loc[snapshots, "electric_boiler"])
+            ax0.plot(snapshots, eb_elec_neg, label="E-Boiler Elec Power [kW]", color="#8c564b", linewidth=2.0, linestyle=":")
+
+    if hasattr(n, "generators") and "solar_pv" in n.generators.index and hasattr(n, "generators_t") and hasattr(n.generators_t, "p_max_pu") and "solar_pv" in n.generators_t.p_max_pu.columns:
+        val = n.generators.loc["solar_pv", "p_nom_opt"] if "p_nom_opt" in n.generators.columns else n.generators.loc["solar_pv", "p_nom"]
+        p_opt = float(val) if not pd.isna(val) else float(n.generators.loc["solar_pv", "p_nom"])
+        if p_opt > 0:
+            p_pot = n.generators_t.p_max_pu.loc[snapshots, "solar_pv"] * p_opt
+            p_act = n.generators_t.p.loc[snapshots, "solar_pv"] if ("solar_pv" in n.generators_t.p.columns) else 0.0
+            p_curt_neg = -np.maximum(0.0, p_pot - p_act)
+            if float(np.abs(p_curt_neg).sum()) > 0:
+                ax0.plot(snapshots, p_curt_neg, label="Solar Curtailed [kW]", color="#7f7f7f", linewidth=2.0, linestyle=":")
+
     if hasattr(n, "loads") and "demand_elec" in n.loads.index:
         if hasattr(n, "loads_t") and hasattr(n.loads_t, "p_set") and "demand_elec" in n.loads_t.p_set.columns:
             demand_e = n.loads_t.p_set.loc[snapshots, "demand_elec"]

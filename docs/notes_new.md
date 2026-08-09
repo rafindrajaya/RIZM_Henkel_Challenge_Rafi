@@ -50,22 +50,63 @@ fig_cost = plot_scenario_cost_per_ton_interactive(
 - Check how I can use the utils that display the metrics such as self consumption, export total, etc
 - After the fix, why does the solve still decide to invest heavily on PPA?
 - I got to validate the result again, especiall investment hub since I just got a new result again
+- Above are the old summmary for the sensitivity analysis. Do the commands below:
+    - Fix the executive summary with the new results
+    I already like the structure that you created, so just adapt the new results to this structure. Provide me the output in .md format in this chat window
 
-## TODO 2:
-- Fix the sensitivity analysis with the new results
-- Recreate the static file
-- Finalize readme, spec, and repo structure
-- Submit
+New results:
+
+Baseline without sec 19:
+Total Baseline OPEX (Standard): €180,791,411.18
+FINAL METRIC (Standard Grid):   401.76 € / ton
+Annual Natural Gas + CO2 Bill: €131,003,958.68
+Annual Electricity Bill (Std): €49,787,452.50
+
+Decision Hub:
+Asset Component	Optimal Sizing Capacity	Unit
+0	GRID_EXPORT	30,000.00	kW
+1	SOLAR_PV	1,000.00	kWp
+2	PV_PPA	30,000.00	kWp
+3	WIND_PPA	30,000.00	kW
+4	GAS_CHP	10,000.00	kW_el
+5	GAS_BOILER	217,100.00	kW_th
+6	ELECTRIC_BOILER	50,000.00	kW_th
+7	HEAT_PUMP	60,000.00	kW_th
+
+Operation hub and decision hub without the sec 19 constraint:
+	Total Cost (EUR)	Cost per Ton (EUR/ton)	OPEX (EUR)	Annualized CAPEX (EUR)	Emissions (tCO2)	Peak Grid Demand (MW)	Grid Export (MWh)	Grid Export Rev (EUR)	Self-Consumption (%)	Autarky (%)	Curtailed Elec (%)	Curtailed Heat (%)	Simultaneous Ops	Sec19 Compliant
+Scenario														
+Operation Hub	1.803789e+08	400.841962	1.803789e+08	0.000000e+00	613577.659955	56.333787	0.0	0.0	0.00	0.00	0.00	0.0	0 hrs (0.0%)	True
+Decision Hub	1.644378e+08	365.417329	1.595770e+08	4.860758e+06	541708.745909	132.448980	0.0	0.0	99.95	20.58	0.01	0.0	0 hrs (0.0%)	False
+
+
+
+
+
+
 	
-
+Above are the old executive summmary. Do the commands below:
     - Fix the executive summary with the new results
     - Add an explanation the assumption for the boudnary selected for PPA and grid export limit: 
         - Off-site Solar PPA (kW) - Both PPA max bound capacities are limited to 50% of continuous elec demand to maximize self consumption rather than export. It is also the safest assumption to avoid local DSO congestion hurdles
         - Grid export cap that represent 50% of the continuous load demand: This assumption is selected to represent standard distribuiton feeder export limits imposed by local utilities
     - Try to explain why the solver decides to max out PPA investment for both sec 19 or not sec 19 grid import cost (calculate the mean of the cost): From the mean, we can know that the import cost is most of the time more expensive than the fixed PPA strike cost
-    - Explain that 
+    - Explain other new visible parameters if they present a good case to argue
+    I already like the structure that you created, so just adapt the new results to this structure. Provide me the output in .md format in this chat window
 
-New results: 
+
+New results:
+
+Baseline: 
+Hourly Gas Consumption:        253.23 MW_fuel
+Hourly Grid Power Import:      50.00 MW_el
+Annual Natural Gas + CO2 Bill: €131,003,958.68
+Annual Electricity Bill (Sec19):€40,479,952.50
+Total Baseline OPEX (§ 19 Privileged): €171,483,911.18
+FINAL METRIC (§ 19 Privileged):        381.08 € / ton
+=======================================================================
+
+Decision hub sizing:
 Asset Component	Optimal Sizing Capacity	Unit
     
 0	GRID_EXPORT	30,000.00	kW
@@ -80,21 +121,17 @@ Asset Component	Optimal Sizing Capacity	Unit
 9	TES_DISCHARGER	0.00	kW_th
 10	TES	0.00	kWh_th
 
-Baseline: 
-Hourly Gas Consumption:        253.23 MW_fuel
-Hourly Grid Power Import:      50.00 MW_el
-Annual Natural Gas + CO2 Bill: €131,003,958.68
-Annual Electricity Bill (Sec19):€40,479,952.50
-Total Baseline OPEX (§ 19 Privileged): €171,483,911.18
-FINAL METRIC (§ 19 Privileged):        381.08 € / ton
-=======================================================================
-
+Operation hub and decision hub executive summary
 	Total Cost (EUR)	Cost per Ton (EUR/ton)	OPEX (EUR)	Annualized CAPEX (EUR)	Emissions (tCO2)	Peak Grid Demand (MW)	Grid Export (MWh)	Grid Export Rev (EUR)	Self-Consumption (%)	Autarky (%)	Curtailed Elec (%)	Curtailed Heat (%)	Simultaneous Ops	Sec19 Compliant
 Scenario														
 Operation Hub	1.708188e+08	379.597373	1.708188e+08	0.000000e+00	614120.371686	56.333787	0.0	0.0	0.00	0.00	0.0	0.0	0 hrs (0.0%)	True
 Decision Hub	1.543134e+08	342.918571	1.497521e+08	4.561219e+06	532422.926099	75.000000	0.0	0.0	99.97	20.59	0.0	0.0	0 hrs (0.0%)	True
 
-
+## TODO 2:
+- Recreate the static file
+    - The static dispatch utils plot has not included the stream going out of the electricity bus as negative like the interactive ones
+- Finalize readme, spec, and repo structure
+- Submit
 
 
 ## Finishing
