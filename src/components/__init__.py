@@ -19,7 +19,7 @@ from .pv import PVComponent, PVComponentConfig, compute_pv_normalized_yield
 from .chp import GasCHPComponent, CHPComponentConfig
 from .boilers import GasBoilerComponent, EBoilerComponent, SteamHeatExchangerComponent, GasBoilerConfig, EBoilerConfig, SteamHeatExchangerConfig
 from .heat_pump import HTHPComponent, HTHPComponentConfig
-from .storage import BESSComponent, TESComponent, BESSComponentConfig, TESComponentConfig
+from .storage import BESSComponent, TESComponent, BESSComponentConfig, TESComponentConfig, add_storage_inverter_constraint
 from .demand import DemandComponent, DemandConfig
 
 __all__ = [
@@ -53,6 +53,7 @@ __all__ = [
     "TESComponent",
     "BESSComponentConfig",
     "TESComponentConfig",
+    "add_storage_inverter_constraint",
     "DemandComponent",
     "DemandConfig",
 ]

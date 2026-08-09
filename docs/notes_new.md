@@ -51,14 +51,10 @@ fig_cost = plot_scenario_cost_per_ton_interactive(
 - I got to validate the result again, especiall investment hub since I just got a new result again
 - Fix the executive summary with the new results
 - Explain why am I fixing the max capacity of PPA to 25 MW and 20 MW?
-- Do the same fixes for the static challenge file
-- Do the notes on content
-- Add the aerial view to the top of the readme.md or challenge?
-- Check the components config and abstraction to make sure there is logical error
-- Explain in the executive summary section that by knowing the exact capacity and operation of the plant, it is also possible to model heat recovery scheme where a process consumes heat and produces recoverable heat
 - Now there is a problem of silmutaneous chargin and discharging, I have to devise a way to prevent this without using binary (small cost penalty or efficiency penalty), gotta check this with grid import and export as well
 - Check how I can use the utils that display the metrics such as self consumption, export total, etc
 - After the fix, why does the solve still decide to invest heavily on PPA?
+- Recreate the static file
 
 
 ## Finishing
@@ -97,6 +93,10 @@ For every details written in the spec sheet, multiple phases each with predefine
 Final testing of logical accuracy, reasoning, and deliveries of the challenge deliverables
 - Add the aerial view from google earth of the empty lots on the big building in Dusseldorf site
 - Create a UML class diagarm in docs and sequence diagram or other insightful diagram in the readme.md using mermaid
+- Do the notes on content
+- Add the aerial view to the top of the readme.md or challenge?
+- Check the components config and abstraction to make sure there is logical error
+- Explain in the executive summary section that by knowing the exact capacity and operation of the plant, it is also possible to model heat recovery scheme where a process consumes heat and produces recoverable heat
 
 ### Not urgent
 - CHP FixedSizingConfig should only just be one value of the the combined heat and power sizing that is then get separated into the COP of elec and heat. For instance, if the fixed sizing is 50 MW, then 

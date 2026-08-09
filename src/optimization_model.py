@@ -58,6 +58,7 @@ from .components import (
     TESComponent,
     BESSComponentConfig,
     TESComponentConfig,
+    add_storage_inverter_constraint,
     DemandComponent,
     DemandConfig,
 )
@@ -580,6 +581,12 @@ class HenkelEnergySystem:
                         net.model["Link-p_nom"].loc["tes_discharger"] == net.model["Store-e_nom"].loc["tes"] * c_rate,
                         name="tes_discharger_c_rate",
                     )
+
+            # Strategy C: Add continuous shared-inverter throughput exclusivity constraint
+            if "bess" in net.stores.index:
+                add_storage_inverter_constraint(net, "bess")
+            if "tes" in net.stores.index:
+                add_storage_inverter_constraint(net, "tes")
 
         # PyPSA Pre-Optimization Consistency Check & Sanitization
         n.sanitize()

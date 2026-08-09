@@ -802,8 +802,83 @@ def calculate_renewable_and_export_metrics(res: Dict[str, Any]) -> Dict[str, flo
     }
 
 
+def calculate_simultaneity_metrics(res: Any, threshold_kw: float = 1.0) -> Dict[str, Any]:
+    """
+    Calculates simultaneous charging/discharging and grid import/export occurrence across all snapshots.
+    
+    Returns
+    -------
+    Dict[str, Any]
+        Dictionary containing BESS, TES, Grid, and total simultaneous hours, percentage, and formatted status string.
+    """
+    empty_res = {
+        "bess_simultaneous_hrs": 0,
+        "tes_simultaneous_hrs": 0,
+        "grid_simultaneous_hrs": 0,
+        "total_simultaneous_hrs": 0,
+        "simultaneity_pct": 0.0,
+        "simultaneity_status": "0 hrs (0.0%)",
+        "has_simultaneity": False,
+    }
+
+    if isinstance(res, dict):
+        n = res.get("network", None)
+    elif hasattr(res, "links_t"):
+        n = res
+    else:
+        n = None
+
+    if n is None or not hasattr(n, "snapshots"):
+        return empty_res
+
+    num_snapshots = len(n.snapshots) if hasattr(n, "snapshots") else 1
+    if num_snapshots == 0:
+        return empty_res
+
+    # 1. BESS Simultaneity Check
+    bess_sim_mask = pd.Series(False, index=n.snapshots)
+    if hasattr(n, "links_t") and hasattr(n.links_t, "p"):
+        if "bess_charger" in n.links_t.p.columns and "bess_discharger" in n.links_t.p.columns:
+            p_ch = n.links_t.p["bess_charger"]
+            p_dis = n.links_t.p["bess_discharger"]
+            bess_sim_mask = (p_ch > threshold_kw) & (p_dis > threshold_kw)
+
+    # 2. TES Simultaneity Check
+    tes_sim_mask = pd.Series(False, index=n.snapshots)
+    if hasattr(n, "links_t") and hasattr(n.links_t, "p"):
+        if "tes_charger" in n.links_t.p.columns and "tes_discharger" in n.links_t.p.columns:
+            p_ch = n.links_t.p["tes_charger"]
+            p_dis = n.links_t.p["tes_discharger"]
+            tes_sim_mask = (p_ch > threshold_kw) & (p_dis > threshold_kw)
+
+    # 3. Grid Import/Export Simultaneity Check
+    grid_sim_mask = pd.Series(False, index=n.snapshots)
+    if hasattr(n, "generators_t") and hasattr(n.generators_t, "p"):
+        if "grid_electricity" in n.generators_t.p.columns and "grid_export" in n.generators_t.p.columns:
+            p_imp = n.generators_t.p["grid_electricity"]
+            p_exp = n.generators_t.p["grid_export"].abs()
+            grid_sim_mask = (p_imp > threshold_kw) & (p_exp > threshold_kw)
+
+    # Combined Simultaneity
+    any_sim_mask = bess_sim_mask | tes_sim_mask | grid_sim_mask
+    tot_sim_hrs = int(any_sim_mask.sum())
+    sim_pct = round((tot_sim_hrs / num_snapshots) * 100.0, 2) if num_snapshots > 0 else 0.0
+
+    status_str = f"{tot_sim_hrs} hrs ({sim_pct}%)" if tot_sim_hrs > 0 else "0 hrs (0.0%)"
+
+    return {
+        "bess_simultaneous_hrs": int(bess_sim_mask.sum()),
+        "tes_simultaneous_hrs": int(tes_sim_mask.sum()),
+        "grid_simultaneous_hrs": int(grid_sim_mask.sum()),
+        "total_simultaneous_hrs": tot_sim_hrs,
+        "simultaneity_pct": sim_pct,
+        "simultaneity_status": status_str,
+        "has_simultaneity": tot_sim_hrs > 0,
+    }
+
+
 def create_summary_dataframe(results_dict: Dict[str, Dict[str, Any]], annual_tonnage: float = 450000.0) -> pd.DataFrame:
-    """Compiles scenario results into a clean financial comparison table (EUR/ton, OPEX, CAPEX, CO2, Export, Curtailment)."""
+    """Compiles scenario results into a clean financial comparison table (EUR/ton, OPEX, CAPEX, CO2, Export, Curtailment, Simultaneity)."""
     rows = []
     for scenario_name, res in results_dict.items():
         tot_cost = res["total_cost_eur"]
@@ -811,6 +886,7 @@ def create_summary_dataframe(results_dict: Dict[str, Dict[str, Any]], annual_ton
         cost_per_ton = tot_cost / eff_tonnage if eff_tonnage > 0 else 0.0
         elec_curt_pct, heat_curt_pct = calculate_curtailment_metrics(res)
         ren_metrics = calculate_renewable_and_export_metrics(res)
+        sim_metrics = calculate_simultaneity_metrics(res)
 
         rows.append({
             "Scenario": scenario_name,
@@ -826,6 +902,7 @@ def create_summary_dataframe(results_dict: Dict[str, Dict[str, Any]], annual_ton
             "Autarky (%)": ren_metrics["autarky_pct"],
             "Curtailed Elec (%)": elec_curt_pct,
             "Curtailed Heat (%)": heat_curt_pct,
+            "Simultaneous Ops": sim_metrics["simultaneity_status"],
             "Sec19 Compliant": not res["sec19_violation"],
         })
 
