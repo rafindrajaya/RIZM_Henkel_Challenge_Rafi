@@ -1,8 +1,7 @@
 # RIZM Energy OS Minimum Viable Product (MVP) — Henkel Düsseldorf Holthausen Pilot
 
-<div style="width: 100%; height: 350px; overflow: hidden; border-radius: 8px;">
-  <img src="ref/henkel-duesseldorf-headquaters_print.jpg" style="width: 100%; height: 100%; object-fit: cover; object-position: 40% 35%;" alt="Henkel Düsseldorf Holthausen Site Aerial View">
-</div>
+<img src="ref/henkel-duesseldorf-headquaters_print.jpg" alt="Henkel Düsseldorf Holthausen Site Aerial View" 
+width = "100%">
 
 ---
 
