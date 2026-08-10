@@ -1,343 +1,265 @@
-# SPEC.md -- Henkel Dusseldorf Agentic Energy OS Challenge
+# SPEC.md -- Henkel Düsseldorf Agentic Energy OS Challenge
 
-> Single Source of Truth for architecture, directory structure, tech stack, data schemas, feature scope, and task execution order.
+> Single Source of Truth for system architecture, directory structure, tech stack, data schemas, energy system design, and optimization modes.
 
 ---
 
 ## 1. Project Objective
 
-Build a production-grade, modular, reproducible MVP repository that answers the RIZM FDE Take-Home Challenge for Henkel's flagship chemical/consumer goods manufacturing site in Dusseldorf-Holthausen.
+Build a production-grade, modular, reproducible MVP repository for Henkel's flagship chemical/consumer goods manufacturing site in Düsseldorf-Holthausen.
 
-### 1.1 Challenge Deliverables (from challenge_question.md)
+### 1.1 Challenge Deliverables
 
-| # | Deliverable | Success Criteria |
-|---|-------------|-----------------|
-| D1 | Identify data-driven energy business use cases measured in EUR/ton | Grounded in Henkel's current public situation; defensible assumptions |
-| D2 | The single most load-bearing data request for the first on-site visit | One request, justified with reasoning |
-| D3 | The single most load-bearing stakeholder you need 30 minutes with | One person, justified with reasoning |
+| # | Deliverable | Description & Success Criteria |
+|---|-------------|--------------------------------|
+| D1 | On-Site Energy Use Cases | Identify high-value, data-driven energy business use cases measured in EUR/ton production cost reduction. |
+| D2 | Primary On-Site Data Request | Formulate the single most load-bearing data request for initial site onboarding, fully justified from first principles. |
+| D3 | Primary Stakeholder Alignment | Identify the single key site stakeholder required for alignment and outline a 30-minute engagement strategy. |
 
-### 1.2 Evaluation Philosophy (from challenge_question.md)
+### 1.2 Evaluation Philosophy
 
-- **Method over outcome.** Clean reasoning > correct numbers.
-- Every assumption must state *why this one and not another*.
-- Toolchain transparency: be explicit about what tools/LLMs/code were used and where.
-- A great submission can be short if the reasoning is clean.
+- **Method over outcome:** First-principles reasoning and structural clarity over brute-force complexity.
+- **Defensible assumptions:** Ground every technical, thermodynamic, and financial parameter in empirical data or literature benchmarks.
+- **Toolchain transparency:** Explicitly document solver engines, component models, and data pipeline flows.
 
 ---
 
 ## 2. Tech Stack (Locked)
 
-| Layer | Tool | Version Constraint | Notes |
-|-------|------|--------------------|-------|
-| Language | Python | >=3.10 | Via `pyproject.toml` |
-| Environment | `uv` | >=0.11 | Cross-platform lockfile via `uv.lock` |
-| Optimization | `pypsa` | >=0.28.0 | Sector-coupled energy system modeling framework |
-| Solver | HiGHS via `linopy` / `highspy` | >=1.7.0 | Accessed via native PyPSA/linopy `solver_name="highs"` |
-| Validation | `pydantic` | >=2.0.0 | User configuration schemas and strict data validation |
-| Solar Modeling | `pvlib` | >=0.11.0 | Integrated Plane-of-Array irradiance & temperature yield |
-| Data | `pandas`, `numpy` | >=2.0.0, >=1.24.0 | DataFrames and numerical computation |
-| Visualization | `matplotlib`, `seaborn`, `plotly` | >=3.7.0, >=0.12.0, >=5.0.0 | Static & interactive notebook dashboards |
-| API | `requests` | >=2.31.0 | Open-Meteo & SMARD market API data fetching |
-| Spreadsheet IO | `openpyxl` | >=3.1.0 | Excel export if needed |
-| Notebook | `jupyter` | >=1.0.0 | Executive deliverable |
-| Build | `setuptools` | >=61.0 | Build backend |
+| Layer | Tool | Version Constraint | Role & Notes |
+|-------|------|--------------------|--------------|
+| Language | Python | >=3.10 | Core execution environment (via `pyproject.toml`) |
+| Package & Env | `uv` | >=0.11 | Ultra-fast, cross-platform lockfile management via `uv.lock` |
+| Energy Modeling | `pypsa` | >=0.28.0 | Sector-coupled energy system graph modeling engine |
+| MILP/LP Solver | HiGHS via `linopy` / `highspy` | >=1.7.0 | High-performance open-source linear optimization solver |
+| Data Validation | `pydantic` | >=2.0.0 | Strict configuration schemas and type validation |
+| Solar Physics | `pvlib` | >=0.11.0 | Plane-of-Array irradiance & temperature-dependent solar yield |
+| Data Processing | `pandas`, `numpy` | >=2.0.0, >=1.24.0 | Datetime series manipulation and matrix operations |
+| Visualization | `plotly`, `matplotlib`, `seaborn` | >=5.0.0, >=3.7.0, >=0.12.0 | Static and interactive dispatch dashboards |
+| External APIs | `requests` | >=2.31.0 | Automated retrieval of SMARD market prices & Open-Meteo weather data |
+| Spreadsheet IO | `openpyxl` | >=3.1.0 | Excel export utilities for financial reporting |
+| Execution | `jupyter` | >=1.0.0 | Interactive notebook environment |
+| Build System | `setuptools` | >=61.0 | Packaging build backend |
 
 ---
 
-## 3. Directory Structure (Canonical)
+## 3. Directory Structure & Architecture Diagrams
+
+### 3.1 Canonical Directory Structure
 
 ```
 RIZM_challenge_Rafi/
-├── .agent/
-│   └── skills/                        # Domain skills grounding AI agent behavior
-│       ├── pypsa-reporting/
-│       ├── pypsa-asset-economics/
-│       ├── python-best-practice.md
-│       ├── german-energy-market-specialist.md
-│       └── solution-architect-career-coach.md
+├── .agent/                             # Domain skills & agent instructions
+│   └── skills/                         # Specialized domain knowledge rules
 ├── data/
-│   ├── market_data_2025.csv           # Live SMARD API filter 4169 electricity + THE gas prices (hourly 2025, 1yr)
-│   ├── solar_data_duesseldorf_2025.csv # Open-Meteo GHI/DNI/DHI + temp (hourly 2025, 1yr)
-│   └── components/                    # TOML config files for each asset type
-│       ├── pv.toml
-│       ├── bess.toml
-│       ├── chp.toml
-│       ├── eboiler.toml
-│       └── hthp.toml
-├── ref/                               # Literature references, reports, screenshots
+│   ├── market_data_2025.csv            # Live SMARD hourly spot electricity & THE gas prices (2025, 8760h)
+│   ├── solar_data_duesseldorf_2025.csv  # Open-Meteo GHI, DNI, DHI & ambient temperature (2025, 8760h)
+│   └── components/                     # TOML configuration files for energy assets
+│       ├── bess.toml                   # Battery Energy Storage System specs
+│       ├── chp.toml                    # Combined Heat & Power unit specs
+│       ├── eboiler.toml                # Electric Boiler specs
+│       ├── hthp.toml                   # High-Temperature Heat Pump specs
+│       ├── pv.toml                     # Solar PV specs
+│       └── demand.toml                 # Baseline load profiles
+├── ref/                                # Literature references & site reports
 ├── src/
 │   ├── __init__.py
-│   ├── components/                    # OOP modular class hierarchy for PyPSA components
-│   │   ├── __init__.py
-│   │   ├── base.py                    # BaseEnergyComponent abstract class interface
-│   │   ├── grid.py                    # Grid import generators (elec & gas)
-│   │   ├── pv.py                      # Rooftop Solar PV generator
-│   │   ├── chp.py                     # Combined Heat & Power unit link
-│   │   ├── boilers.py                 # Gas Boiler, EBoiler, Steam-Heat Exchanger links
-│   │   ├── heat_pump.py               # HTHP link (elec -> heat_lt)
-│   │   ├── storage.py                 # BESS and TES storage units / stores
-│   │   └── demand.py                  # Continuous baseload loads (elec, steam, heat)
-│   ├── external_api.py                # Market & weather data pipeline
-│   ├── optimization_model.py          # OOP PyPSA network model & Pydantic config schemas
-│   └── utils.py                       # Visual reporting, interactive Plotly dashboard & financial summaries
-├── scripts/
-│   └── build_notebook.py              # Automated notebook generator
+│   ├── components/                     # Modular OOP component architecture for PyPSA
+│   │   ├── __init__.py                 # Component package exports
+│   │   ├── base.py                     # BaseEnergyComponent abstract class & EAC annuity helper
+│   │   ├── grid.py                     # Electricity grid, gas grid, grid export, & PPA generators
+│   │   ├── pv.py                       # Rooftop PV generator with pvlib yield integration
+│   │   ├── chp.py                      # Combined Heat & Power co-generation link
+│   │   ├── boilers.py                  # Gas Boiler, Electric Boiler, Steam Heat Exchanger
+│   │   ├── heat_pump.py                # High-Temperature Heat Pump link
+│   │   ├── storage.py                  # BESS & TES storage components with inverter constraints
+│   │   └── demand.py                   # Industrial electrical, HT steam, & MT heat loads
+│   ├── external_api.py                 # SMARD market & Open-Meteo solar data pipeline
+│   ├── optimization_model.py           # PyPSA HenkelEnergySystem network model & Pydantic schemas
+│   └── utils.py                        # Visual dispatch stacks, financial metrics, & schematic plots
+├── tests/
+│   └── test_static_1week_plotting.py   # Unit test suite for static 1-week dispatch visualization
 ├── docs/
-│   ├── progress_update/               # Progress reports and tracking
-│   ├── challenge_question.md          # Original RIZM challenge brief
-│   ├── prompt.md                      # Solution planning notes
-│   ├── notes.md                       # Working notes and user requirements
-│   └── checklist.md                   # Pre-submission checklist
-├── challenge.ipynb                    # Main executive notebook deliverable
-├── pyproject.toml                     # Project metadata and dependencies
-├── uv.lock                            # Universal reproducible lockfile
-├── .gitignore
-├── README.md                          # Entry point and repo navigation guide
-└── SPEC.md                            # THIS FILE -- single source of truth
+│   ├── progress_update/                # Progress reports tracking refactoring & audits
+│   ├── challenge_question.md           # Original RIZM challenge brief
+│   ├── notes_new.md                    # System modeling notes
+│   └── checklist.md                    # Submission verification checklist
+├── challenge_interactive.ipynb         # Notebook deliverable (interactive Plotly dashboards)
+├── challenge_static_final.ipynb        # Final static notebook deliverable
+├── pyproject.toml                      # Project dependencies & metadata
+├── uv.lock                             # Universal lockfile for exact environment reproducibility
+├── README.md                           # Main repository guide
+└── SPEC.md                             # THIS FILE -- Single source of truth
 ```
 
-> **Rule: No files or directories may be created outside this structure without proposing a SPEC amendment first.**
+### 3.2 OOP Component Architecture (Mermaid Class Diagram)
 
----
-
-## 4. Data Schemas
-
-### 4.1 Market Data CSV (`data/market_data_2025.csv`)
-
-| Column | Unit | Description |
-|--------|------|-------------|
-| index (DatetimeIndex) | UTC+1 hourly | Timestamp |
-| `elec_spot_eur_mwh` | EUR/MWh | Day-Ahead electricity spot price |
-| `gas_spot_eur_mwh` | EUR/MWh | THE natural gas spot benchmark |
-| `co2_tax_eur_mwh_gas` | EUR/MWh | CO2 surcharge on gas combustion |
-| `gas_total_eur_mwh` | EUR/MWh | gas_spot + co2_tax |
-| `grid_fee_standard_eur_mwh` | EUR/MWh | Standard grid usage fee |
-| `grid_fee_sec19_eur_mwh` | EUR/MWh | Reduced fee under sec19 StromNEV |
-| `elec_total_standard_eur_mwh` | EUR/MWh | elec_spot + grid_fee_standard |
-| `elec_total_sec19_eur_mwh` | EUR/MWh | elec_spot + grid_fee_sec19 |
-
-### 4.2 Solar Data CSV (`data/solar_data_duesseldorf_2025.csv`)
-
-| Column | Unit | Description |
-|--------|------|-------------|
-| index (DatetimeIndex) | UTC+1 hourly | Timestamp |
-| `ghi` | W/m2 | Global Horizontal Irradiance |
-| `dni` | W/m2 | Direct Normal Irradiance |
-| `dhi` | W/m2 | Diffuse Horizontal Irradiance |
-| `temp_air` | deg C | Ambient air temperature |
-
-### 4.3 Component Configuration Files (`data/components/*.toml`) [NEW]
-
-Each asset type gets a TOML config file with real market-sourced specifications that the optimization model will parse. Example schema:
-
-```toml
-# data/components/pv.toml
-[pv]
-model_name = "Generic_Rooftop_Crystalline"
-capex_eur_per_kw = 800.0
-opex_eur_per_kw_year = 12.0
-lifetime_years = 25
-degradation_rate_per_year = 0.005
-max_capacity_kw = 25000.0  # Rooftop constraint from spatial analysis
+```mermaid
+classDiagram
+    class BaseComponentConfig {
+        +str name
+        +bool is_extendable
+        +int lifetime_years
+    }
+    
+    class BaseEnergyComponent {
+        <<abstract>>
+        +str name
+        +BaseModel config
+        +bool is_extendable
+        +calculate_annualized_capex(wacc) float
+        +get_capital_cost(wacc) float
+        +build_component(network, wacc)*
+    }
+    
+    BaseEnergyComponent <|-- GridElectricityComponent
+    BaseEnergyComponent <|-- GridGasComponent
+    BaseEnergyComponent <|-- GridExportComponent
+    BaseEnergyComponent <|-- PVPPAComponent
+    BaseEnergyComponent <|-- WindPPAComponent
+    BaseEnergyComponent <|-- PVComponent
+    BaseEnergyComponent <|-- GasCHPComponent
+    BaseEnergyComponent <|-- GasBoilerComponent
+    BaseEnergyComponent <|-- EBoilerComponent
+    BaseEnergyComponent <|-- SteamHeatExchangerComponent
+    BaseEnergyComponent <|-- HTHPComponent
+    BaseEnergyComponent <|-- BESSComponent
+    BaseEnergyComponent <|-- TESComponent
+    BaseEnergyComponent <|-- DemandComponent
+    
+    BaseComponentConfig <|-- GridElectricityConfig
+    BaseComponentConfig <|-- GridGasConfig
+    BaseComponentConfig <|-- GridExportConfig
+    BaseComponentConfig <|-- PVPPAConfig
+    BaseComponentConfig <|-- WindPPAConfig
+    BaseComponentConfig <|-- PVComponentConfig
+    BaseComponentConfig <|-- CHPComponentConfig
+    BaseComponentConfig <|-- GasBoilerConfig
+    BaseComponentConfig <|-- EBoilerConfig
+    BaseComponentConfig <|-- SteamHeatExchangerConfig
+    BaseComponentConfig <|-- HTHPComponentConfig
+    BaseComponentConfig <|-- BESSComponentConfig
+    BaseComponentConfig <|-- TESComponentConfig
+    BaseComponentConfig <|-- DemandConfig
 ```
 
-```toml
-# data/components/bess.toml
-[bess]
-model_name = "Generic_LFP_Container"
-capex_eur_per_kwh = 350.0
-opex_eur_per_kwh_year = 5.0
-lifetime_years = 15
-round_trip_efficiency = 0.90
-initial_soc = 0.5
-max_capacity_kwh = 50000.0
-c_rate = 0.5
+### 3.3 Optimization Execution Pipeline (Mermaid Sequence Diagram)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Notebook / Script
+    participant API as src.external_api
+    participant Model as HenkelEnergySystem (optimization_model.py)
+    participant Comp as src.components
+    participant PyPSA as PyPSA Network Engine
+    participant Solver as HiGHS Solver
+    participant Utils as src.utils
+
+    User->>API: load_market_data(), load_solar_data()
+    API-->>User: df_market, df_solar DataFrames
+    User->>Model: Instantiate HenkelEnergySystem(df_market, df_solar, mode, configs)
+    Model->>PyPSA: pypsa.Network() + add buses (b_elec, b_gas, b_steam_ht, b_heat_lt)
+    Model->>Comp: Instantiate components (Grid, PV, CHP, Boilers, HTHP, BESS, TES, Demand)
+    Comp->>PyPSA: build_component(network) -> add Generators, Links, Stores, Loads
+    Model->>Comp: add_storage_inverter_constraint(network) -> add Link exclusivity
+    User->>Model: solve(solver_name="highs", timesteps=8760)
+    Model->>PyPSA: network.optimize(solver_name="highs")
+    PyPSA->>Solver: Send LP/MILP formulation
+    Solver-->>PyPSA: Optimal primal dispatch & dual marginal costs
+    PyPSA-->>Model: Optimized network object
+    Model->>Model: Calculate cost_per_ton_eur, emissions, self-consumption
+    Model-->>User: Results dictionary & optimal capacities
+    User->>Utils: plot_dispatch_stacks_static(), plot_dispatch_stacks_interactive()
+    Utils-->>User: Visual dispatch dashboards & financial summary tables
 ```
 
 ---
 
-## 5. Energy System Architecture
+## 4. Energy System Architecture & Schemas
 
-### 5.1 Buses
+### 4.1 Bus Topography
 
-| Bus Label | Carrier | Unit |
-|-----------|---------|------|
-| `b_elec` | Electricity | kW |
-| `b_gas` | Natural Gas | kW (LHV) |
-| `b_steam_ht` | High-Temperature Steam (16 bar, ~200 deg C) | kW_th |
-| `b_heat_lt` | Mid/Low-Temperature Process Heat (~80 deg C) | kW_th |
+| Bus Label | Bus Name | Carrier | Unit | Target Quality / Temperature |
+|-----------|----------|---------|------|------------------------------|
+| `b_elec` | Electricity Bus | Electricity | kW | Site electrical distribution |
+| `b_gas` | Natural Gas Bus | Natural Gas | kW (LHV) | High-pressure gas grid supply |
+| `b_steam_ht` | High-Temp Steam Bus | High-Temp Steam | kW_th | Process Steam (16 bar, ~200 °C) |
+| `b_heat_lt` | Process Heat Bus | Mid/Low-Temp Heat | kW_th | Hot Water / Process Heat (~80 °C) |
 
-### 5.2 Components (All capacities in kW or kWh)
+### 4.2 Energy Assets & PyPSA Network Components
 
-| Component | Label | Type | Bus In | Bus Out | Key Parameters |
-|-----------|-------|------|--------|---------|----------------|
-| Grid Electricity | `grid_electricity` | Source | -- | b_elec | variable_costs from market CSV |
-| Gas Grid | `grid_gas` | Source | -- | b_gas | variable_costs = gas_spot + CO2_tax |
-| Solar PV | `solar_pv` | Source | -- | b_elec | fix=normalized GHI; pvlib integration pending |
-| Gas CHP | `gas_chp` | Converter | b_gas | b_elec, b_steam_ht | eta_el=0.40, eta_th=0.45 |
-| Gas Boiler | `gas_boiler` | Converter | b_gas | b_steam_ht | eta_th=0.92 |
-| Electric Boiler | `electric_boiler` | Converter | b_elec | b_steam_ht | eta_th=0.98 |
-| Steam-to-Heat HX | `steam_to_heat_exchanger` | Converter | b_steam_ht | b_heat_lt | eta=0.98 |
-| Heat Pump (HTHP) | `heat_pump` | Converter | b_elec | b_heat_lt | COP=2.8 |
-| BESS | `bess` | GenericStorage | b_elec | b_elec | eta_in=0.95, eta_out=0.95 |
-| TES | `tes` | GenericStorage | b_heat_lt | b_heat_lt | eta_in=0.98, eta_out=0.98, loss_rate=0.005/h |
-| Elec Demand | `demand_elec` | Sink | b_elec | -- | 60 MW continuous |
-| Steam Demand | `demand_steam` | Sink | b_steam_ht | -- | 160 MW_th continuous |
-| Heat Demand | `demand_heat` | Sink | b_heat_lt | -- | 60 MW_th continuous |
+| Component | PyPSA Type | Input Bus | Output Bus(es) | Key Operational & Thermodynamic Parameters |
+|-----------|------------|-----------|----------------|-------------------------------------------|
+| `grid_electricity` | Generator | -- | `b_elec` | Marginal cost = hourly spot price + grid fee (€/MWh) |
+| `grid_gas` | Generator | -- | `b_gas` | Marginal cost = THE gas spot + CO2 tax (€/MWh) |
+| `grid_export` | Generator/Link | `b_elec` | -- | Negative generator / link for selling excess power to grid |
+| `solar_pv` | Generator | -- | `b_elec` | Capacity factor profile computed via `pvlib` |
+| `pv_ppa` | Generator | -- | `b_elec` | Solar PPA with fixed strike price (€/MWh) & yield profile |
+| `wind_ppa` | Generator | -- | `b_elec` | Wind PPA with fixed strike price (€/MWh) & yield profile |
+| `gas_chp` | Link | `b_gas` | `b_elec`, `b_steam_ht` | $\eta_{el} = 0.40$, $\eta_{th} = 0.45$ (Total $\eta = 0.85$) |
+| `gas_boiler` | Link | `b_gas` | `b_steam_ht` | $\eta_{th} = 0.92$ |
+| `electric_boiler` | Link | `b_elec` | `b_steam_ht` | $\eta_{th} = 0.98$ |
+| `steam_to_heat_exchanger` | Link | `b_steam_ht` | `b_heat_lt` | $\eta_{th} = 0.98$ (Degrades HT steam to MT heat) |
+| `heat_pump` | Link | `b_elec` | `b_heat_lt` | $\text{COP} = 2.8$ (High-temperature industrial heat pump) |
+| `bess` | Store + Links | `b_elec` | `b_elec` | $\eta_{in} = 0.95$, $\eta_{out} = 0.95$ (RTE = 90%), inverter exclusivity |
+| `tes` | Store | `b_heat_lt` | `b_heat_lt` | $\eta_{in} = 0.98$, $\eta_{out} = 0.98$, standing loss $= 0.005\text{ h}^{-1}$ |
+| `demand_elec` | Load | `b_elec` | -- | 60 MW continuous industrial electrical baseload |
+| `demand_steam` | Load | `b_steam_ht` | -- | 160 MW_th continuous high-temp steam demand |
+| `demand_heat` | Load | `b_heat_lt` | -- | 60 MW_th continuous process heat demand |
 
-### 5.3 Optimization Modes
+### 4.3 Pydantic Configuration Schemas
 
-| Mode | Description | Key Behavior |
-|------|-------------|--------------|
-| `operation` | Fixed existing asset capacities | Minimize hourly OPEX via dispatch optimization |
-| `investment` | Variable capacities for PV, BESS, HTHP, TES | Minimize OPEX + annualized CAPEX (EAC) jointly |
+The model relies on Pydantic schemas in `src/optimization_model.py` and `src/components/` to strictly enforce type correctness and parameter validation.
 
-### 5.4 Fermi Estimate Baseline
-
-| Parameter | Value | Source |
-|-----------|-------|--------|
-| Annual Production | 450,000 tons/year | StoREN DLR / Henkel public data |
-| Electrical Baseload | 60 MW_el | StoREN Phase 1 report |
-| Thermal Baseload | 220 MW_th (160 HT steam + 60 MT heat) | StoREN Phase 1 report |
-| Full-Load Hours | 7,000 h/year (~80% capacity factor) | Industrial chemical site benchmark |
-| Gas Tariff (incl. CO2) | 45 EUR/MWh | THE benchmark + EU ETS at 80 EUR/t |
-| Electricity Tariff (spot+grid) | 130 EUR/MWh | SMARD 2024 weighted average + grid fees |
-| Thermal Energy Intensity | 3.33 MWh_th/ton | Derived: 1,500,000 MWh / 450,000 tons |
-| Electrical Energy Intensity | 1.00 MWh_el/ton | Derived: 450,000 MWh / 450,000 tons |
-| **Baseline EUR/ton** | **280 EUR/ton** | 150 (thermal) + 130 (electrical) |
-| **Annual Energy Cost** | **126,000,000 EUR/year** | 280 * 450,000 |
+- **`FixedSizingConfig`**: Configures installed capacities for existing assets (`chp_el`, `chp_th`, `gas_boiler`, `eboiler`, `hthp`, `tes`, `pv`, `bess`, `grid_export`, demand overrides).
+- **`InvestmentSizingConfig`**: Enables capacity co-optimization for candidate technologies (`pv`, `bess`, `hthp`, `tes`, `pv_ppa`, `wind_ppa`).
+- **`FacilityProjectConfig`**: Site operational settings including annual production volume (450,000 tons/yr), WACC (7%), grid fee regimes (Standard vs. §19 StromNEV), PPA strike prices, and export caps.
+- **`ComponentBounds`**: Min/max capacity limits passed to PyPSA investment optimization.
 
 ---
 
-## 6. Execution Phases & Task Breakdown
+## 5. Optimization Modes
 
-### Phase 1: Skills Update [STATUS: DONE]
+The PyPSA network supports two primary operational and planning modes:
 
-| Task | File(s) | Description |
-|------|---------|-------------|
-| 1.1 | `.agent/skills/german-energy-market-specialist.md` | Add online reference URLs for validating German energy market assumptions (SMARD, Bundesnetzagentur, sec19 StromNEV legal text) |
-| 1.2 | `.agent/skills/milp-optimization-engineer.md` | Add links to oemof.solph docs, example repos, Pyomo best practices |
-| 1.3 | `.agent/skills/thermodynamics-exergy-specialist.md` | Add references for COP modeling, heat pump temperature lifts, exergy analysis |
-| 1.4 | `.agent/skills/solution-architect-career-coach.md` | Rewrite to focus on first-principles problem decomposition with references to structured thinking frameworks |
+### 5.1 Operation Mode (`mode="operation"`)
 
-### Phase 2: Optimization Model Update [STATUS: TODO]
+- **Objective:** Minimize total hourly operational expenditure (OPEX) across the simulation horizon.
+- **Asset Capacities:** Fixed based on Henkel's current installed site assets (`FixedSizingConfig`).
+- **Decision Variables:** Hourly dispatch rates of generators, links, stores, and grid import/export streams.
+- **Use Case:** Day-ahead operational scheduling, fuel switching (gas boiler vs. electric boiler vs. CHP), spot market arbitrage, and battery charge/discharge optimization.
 
-| Task | File(s) | Description |
-|------|---------|-------------|
-| 2.1 | `data/components/*.toml` | Create TOML config files with real market specs for PV, BESS, CHP, E-Boiler, HTHP |
-| 2.2 | `src/optimization_model.py` | Parse TOML configs instead of hardcoded parameters |
-| 2.3 | `src/optimization_model.py` | Accept user-supplied `market_path` and `solar_path` file paths |
-| 2.4 | `src/optimization_model.py` | Integrate `pvlib` for PV modeling (replace raw GHI normalization) |
-| 2.5 | `src/optimization_model.py` | Add CO2 emission tracking in post-processing (gas grid + electricity grid emission factors; compute tons CO2 avoided) |
-| 2.6 | `src/optimization_model.py` | Downgrade sec19 StromNEV from primary feature to one configurable parameter among others (regulation expires ~2028) |
-| 2.7 | `src/external_api.py` | Verify `highspy` is properly imported and accessible through `appsi_highs` solver path |
+### 5.2 Investment Mode (`mode="investment"`)
 
-### Phase 2.5: Model Convention Alignment [STATUS: DONE]
-
-| Task | File(s) | Description |
-|------|---------|-------------|
-| 2.5.1 | `src/optimization_model.py` | Replace `_get_annualized_cost()` with `oemof.tools.economics.annuity()`. WACC stays at 0.07. |
-| 2.5.2 | `src/optimization_model.py` | Create Pydantic models for each TOML component config (PVConfig, BESSConfig, CHPConfig, EBoilerConfig, HTHPConfig). Critical fields required; secondary fields keep defaults. Update `load_component_config()` to return validated models. |
-| 2.5.3 | `src/optimization_model.py` | Wire `min_capacity` from `ComponentBounds` into oemof `Investment(minimum=...)` for PV, BESS, HTHP, TES. Defaults remain 0.0. |
-| 2.5.4 | `src/optimization_model.py` | Switch solve method from `po.SolverFactory('appsi_highs')` to `om.solve(solver='highs', solve_kwargs={'tee': True})`. Remove manual dual/rc hacks. Use `solph.processing.meta_results(om)` for objective. If significantly slower, fall back to `appsi_highs`. |
-| 2.5.5 | `src/utils.py` | Add `plot_energy_system_graph(energy_system)` utility using networkx. Add `create_optimization_summary_table(solution_meta)` returning formatted pandas DataFrame. |
-| 2.5.6 | `challenge.ipynb` (via `scripts/build_notebook.py`) | Add config schema docs markdown cell, graph visualization cells (both modes), and summary table cells after each solve. |
-
-### Phase 3: Notebook Update [STATUS: TODO]
-
-| Task | File(s) | Description |
-|------|---------|-------------|
-| 3.1 | `scripts/build_notebook.py` | Remove all emoji characters from notebook markdown cells |
-| 3.2 | `scripts/build_notebook.py` | Fix datetime x-axis parsing on all plots (use `matplotlib.dates` formatters) |
-| 3.3 | `scripts/build_notebook.py` | Ensure every plot has a visible legend |
-| 3.4 | `scripts/build_notebook.py` | Revise Decision Hub narrative (not just sec19-centric; focus on holistic energy cost reduction) |
-| 3.5 | `scripts/build_notebook.py` | Regenerate and re-execute `challenge.ipynb` end-to-end |
-
-### Phase 4: Reference Mining [STATUS: TODO]
-
-| Task | File(s) | Description |
-|------|---------|-------------|
-| 4.1 | `ref/` PDFs | Scan StoREN report and Bolten et al. for existing utility infrastructure data (PV, BESS, CHP, E-Boiler, HTHP capacities) and report findings with page numbers |
-
-### Phase 5: Documentation and Polish [STATUS: TODO]
-
-| Task | File(s) | Description |
-|------|---------|-------------|
-| 5.1 | `README.md` | Remove emojis; add aerial photo of Henkel site; clean up results table with final verified numbers |
-| 5.2 | `README.md` | Ensure repo navigation instructions are accurate to current structure |
-| 5.3 | All files | Final review: check data accuracy and intuition per `docs/checklist.md` |
-| 5.4 | All files | Verify challenge criteria alignment per `docs/challenge_question.md` |
+- **Objective:** Minimize total annualized system cost ($\text{Total Cost} = \text{OPEX} + \text{Annualized CAPEX}$).
+- **CAPEX Treatment:** Overnight capital expenditure is converted into Equivalent Annualized Cost (EAC) per unit of capacity using asset lifetimes and site WACC (7%):
+  $$\text{EAC} = \text{CAPEX} \cdot \left[ \frac{wacc \cdot (1 + wacc)^n}{(1 + wacc)^n - 1} \right] + \text{OPEX}_{fixed}$$
+- **Decision Variables:** Jointly optimizes capacity expansion ($\text{kW}$ or $\text{kWh}$) for extendable candidate assets (PV, BESS, HTHP, TES, PPAs) and their 8760h hourly dispatch.
+- **Use Case:** Decarbonization roadmap planning, asset sizing, and capital allocation for site transformation.
 
 ---
 
-## 7. Coding Standards
+## 6. Execution Phases & Refactoring Milestones
 
-1. **Units:** All oemof.solph components use kW (power) and kWh (energy). All market data CSVs use EUR/MWh. Conversion happens at the boundary (divide by 1000 when passing EUR/MWh into model as EUR/kWh).
-2. **No Emojis:** No emoji characters anywhere in the repo (code, markdown, notebooks).
-3. **Type Hints:** All function signatures must have explicit type annotations.
-4. **Function Length:** Individual functions should stay under 40 lines where possible.
-5. **Comments:** Inline comments for any non-obvious logic, especially conversion factors, efficiency values, and regulatory references.
-6. **Assumptions:** Every hardcoded number (efficiency, cost, capacity) must have a comment or docstring stating its source or reasoning.
+A summary of key milestones tracking the evolution of the repository:
 
----
+1. **Phase 1: PyPSA Engine Migration & Base OOP Abstraction**
+   - Transformed initial model concepts into a clean, modular PyPSA framework.
+   - Designed `BaseEnergyComponent` abstract base class and standardized component lifecycle in `src/components/`.
 
-## 8. Verification Plan
+2. **Phase 2: Data Pipeline & Thermodynamic Realism Audit**
+   - Built automated data fetching pipelines in `src/external_api.py` for SMARD electricity/gas spot prices and Open-Meteo weather data.
+   - Integrated `pvlib` for physical PV yield calculations.
+   - Enforced dual-temperature thermal quality (HT 16 bar steam vs. MT 80 °C process heat) and COP modeling for industrial heat pumps.
 
-### 8.1 Automated Tests (per-task)
+3. **Phase 3: Grid Export, PPAs & BESS Inverter Constraint Hardening**
+   - Implemented offsite Wind and PV PPA generator components with flexible strike price structures.
+   - Added configurable electricity grid export limits (`grid_export`).
+   - Implemented custom PyPSA extra-functionality constraints (`add_storage_inverter_constraint`) to guarantee mutually exclusive charging and discharging links for BESS.
 
-```bash
-# Environment reproducibility
-uv sync
+4. **Phase 4: Reporting & Visual Dashboards Refactor**
+   - Built `src/utils.py` module featuring interactive Plotly dispatch dashboards, static Matplotlib 1-week/full-horizon plots, and executive financial summary tables.
+   - Standardized cost per ton metrics (`EUR/ton`) and §19 StromNEV fee savings calculations.
 
-# Data pipeline
-uv run python -m src.external_api
-
-# Operation mode solve (168h sample)
-uv run python -c "
-import pandas as pd
-from src.optimization_model import HenkelEnergySystem
-df_m = pd.read_csv('data/market_data_2024.csv', index_col=0, parse_dates=True)
-df_s = pd.read_csv('data/solar_data_duesseldorf_2024.csv', index_col=0, parse_dates=True)
-hes = HenkelEnergySystem(df_market=df_m, df_solar=df_s, mode='operation')
-res = hes.solve(timesteps=168)
-print('EUR/ton:', round(res['cost_per_ton_eur'], 2))
-"
-
-# Investment mode solve (168h sample)
-uv run python -c "
-import pandas as pd
-from src.optimization_model import HenkelEnergySystem
-df_m = pd.read_csv('data/market_data_2024.csv', index_col=0, parse_dates=True)
-df_s = pd.read_csv('data/solar_data_duesseldorf_2024.csv', index_col=0, parse_dates=True)
-hes = HenkelEnergySystem(df_market=df_m, df_solar=df_s, mode='investment')
-res = hes.solve(timesteps=168)
-print('EUR/ton:', round(res['cost_per_ton_eur'], 2))
-caps = hes.get_investment_capacities()
-print('Capacities:', caps)
-"
-
-# Notebook end-to-end execution
-uv run jupyter nbconvert --to notebook --execute challenge.ipynb --output challenge_executed.ipynb
-```
-
-### 8.2 Manual Verification (per docs/checklist.md)
-
-1. Check data accuracy and intuition: do the numbers look right?
-2. Check RIZM criteria alignment: does the submission answer D1, D2, D3?
-3. Verify no emojis remain in any file.
-4. Verify all plots have legends and clean datetime x-axes.
-
----
-
-## 9. Execution Order
-
-Tasks MUST be executed in this order (matching the TODO list in notes.md):
-
-1. **Phase 1** -- Skills update (Tasks 1.1-1.4)
-2. **Phase 2** -- Optimization model update (Tasks 2.1-2.7)
-3. **Phase 2.5** -- Model convention alignment (Tasks 2.5.1-2.5.6)
-4. **Phase 3** -- Notebook update (Tasks 3.1-3.5)
-5. **Phase 4** -- Reference mining (Task 4.1)
-6. **Phase 5** -- Documentation and polish (Tasks 5.1-5.4)
-
-> **Rule: Do not start a later phase until all tasks in the current phase pass verification.**
+5. **Phase 5: Automated Testing & Verification**

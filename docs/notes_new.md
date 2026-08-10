@@ -127,20 +127,18 @@ Scenario
 Operation Hub	1.708188e+08	379.597373	1.708188e+08	0.000000e+00	614120.371686	56.333787	0.0	0.0	0.00	0.00	0.0	0.0	0 hrs (0.0%)	True
 Decision Hub	1.543134e+08	342.918571	1.497521e+08	4.561219e+06	532422.926099	75.000000	0.0	0.0	99.97	20.59	0.0	0.0	0 hrs (0.0%)	True
 
-## TODO 2:
 - Recreate the static file
     - The static dispatch utils plot has not included the stream going out of the electricity bus as negative like the interactive ones
+    - Add the aerial view from google earth of the empty lots on the big building in Dusseldorf site
+- Create a UML class diagaram in docs and sequence diagram or other insightful diagram in the readme.md using mermaid
+
+## TODO 2:
 - Finalize readme, spec, and repo structure
 - Submit
 
 
 ## Finishing
-- Update the SPEC.md to the latest changes and repo architecture
-- Create a CI test that tests all the possible 
-    1.  Create a smoke test for the optimization framework, testing for different configuration and different plotting functions.
-    2.  Check all rules and expected output (e.g., if the config sets a component to zero, the visualization function should not display the schematic).
-    3.  Check the operation hub and decision hub with different configurations for a 1-week optimization period to ensure every test is satisfied.
-    4.  Future goal: Upgrade this to a CI test for GitHub Lab.
+
 
 
 
@@ -153,9 +151,13 @@ Decision Hub	1.543134e+08	342.918571	1.497521e+08	4.561219e+06	532422.926099	75.
 
 
 ### Notes on content
-
+- Add the aerial view to the top of the readme.md (create a scaffolding for this to let me just copy paste the relative path)
+- Introduction to the repo briefly and explain what the repo is for
 - Explain why this approach is chosen and why this extent of abstraction (why not more or less)
-- Elaborate the process of tackling this challenge (mermaid diagram w/ extra brief note the importance of each step according to my perspective) ->in README.md
+    - I took this approach to propose a solution to the challenge that is grounded with my background expertise in MILP modelling and passion and hobby in designing software frameworks system
+    - I adopted a OOP mindset for the repo to make sure that the framework is modular and extensible, allowing for simulation of different kind of case studies or energy system, however, I kept it at an MVP level to balance between effort, time, priority since I am currently still finsihing my master thesis report. 
+
+- Elaborate the process of tackling this challenge (mermaid diagram w/ extra brief note the importance of each step according to my perspective) 
 1. Business analysis and data collection
 To get a sense of the line of business, energy consumption, & magnitude
 2. Idea brainstorming and Goals elaboration 
@@ -163,19 +165,24 @@ To land on an impactful solution with clear goal with current estimation
 3. Spec engineering and system abstraction creation
 Spec engineering for Spec-driven Development was done to set a ground truth when working with agentic AI to set a clear foundation of what tools to be used and to what end. The abstraction creation is system design thinking to ensure clean architechture best practice while avoiding too much abstraction for this specific challenge purpose.
 4. Setting up skills, rules, and loops for agentic AI
-To add an extra layer of capabilities to the AI to based its reasoning on clear resources specifically for different technical purposes and to validat and correct when I make a mistake: Energy market specialist, MILP specialist, Thernomdynamics specialist, Python best practice, etc
+To add an extra layer of capabilities to the AI to based its reasoning on clear resources specifically for different technical purposes and to validat and correct when I make a mistake: PyPSA skills retrieved from a public github repo, other helper skills to ensure code and delivery quality
 5. Implementation, Review, Iteration
-For every details written in the spec sheet, multiple phases each with predefined tasks are generated. It is important to review, fix, and iterate for each of the phase in order to make sure goal is met and codebase remain managable
+For every details written in the spec sheet, multiple phases each with predefined tasks are generated. It is important to review, fix, and iterate for each of the phase in order to make sure goal is met and codebase remain managable. 
 6. Final Validation
-Final testing of logical accuracy, reasoning, and deliveries of the challenge deliverables
-- Add the aerial view from google earth of the empty lots on the big building in Dusseldorf site
-- Create a UML class diagarm in docs and sequence diagram or other insightful diagram in the readme.md using mermaid
-- Do the notes on content
-- Add the aerial view to the top of the readme.md or challenge?
-- Check the components config and abstraction to make sure there is logical error
-- Explain in the executive summary section that by knowing the exact capacity and operation of the plant, it is also possible to model heat recovery scheme where a process consumes heat and produces recoverable heat
+Final testing of logical accuracy, reasoning, and deliveries of the challenge deliverable
+
+- Explain that for reviewer who wants to simply see the challenge solution on github without cloning, visit the challenge_static_final.ipynb because every plots and visualizations are already rendered and ready to see online
+- For reviewer who wants a deep dive with the plots and visualization, they can clone this repo (explain the set of steps to clone this repo and initialize the virutual environment with uv)
+- List and briefly explained and justified the stacks used in this repo
+- Documentation section: tell the people to check the SPEC.md for further details on interanl architecture of the repo etc
+- Let me know if there is anything else I should add in the README.md
+
+
 
 ### Not urgent
-- CHP FixedSizingConfig should only just be one value of the the combined heat and power sizing that is then get separated into the COP of elec and heat. For instance, if the fixed sizing is 50 MW, then 
 - Is there a way to simulate load flexibility that should always be above 80% demand capacity in PyPSA for all the designed demands?
-- Create a CI test that checks whether both the operation hub and decision hub framework can converge optimally under different sizing configuration for a 1 week operation and that the result is not multiple magnitude off from the range of possible results
+- Create a CI test that tests all the possible 
+    1.  Create a smoke test for the optimization framework, testing for different configuration and different plotting functions.
+    2.  Check all rules and expected output (e.g., if the config sets a component to zero, the visualization function should not display the schematic).
+    3.  Check the operation hub and decision hub with different configurations for a 1-week optimization period to ensure every test is satisfied.
+    4.  Future goal: Upgrade this to a CI test for GitHub Lab.
