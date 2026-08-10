@@ -52,7 +52,7 @@ flowchart TD
 6. **Final Validation**
    *Rigorously test the logical accuracy, mathematical calculation, solver convergence, and business alignment of all challenge deliverables.*
 
-   >The framework had taken a steep u-turn from a previously adopted oemof-solph based framework (my native tool) to PyPSA due to performance and ease of use (oemof-solph requires a solver installation to path that can become tricky for non-technical user
+   >The framework had taken a steep u-turn from a previously adopted oemof-solph based framework (my native tool) to PyPSA due to performance and ease of use (oemof-solph requires an external solver installation that can become annoying)
 
 ---
 
