@@ -48,7 +48,7 @@ flowchart TD
 4. **Setting Up Skills, Rules, and Loops for Agentic AI**
    *Equip the AI assistant with specialized domain skills (PyPSA skills, MILP modeling standards, German energy market regulations, and Python best practices) to ensure grounded reasoning and self-correcting validation.*
 5. **Implementation, Review, Iteration**
-   *Execute phase-based tasks defined in the specification sheet. Perform continuous review, code audits, and refactoring iterations to maintain clean architecture and code clarity. *
+   *Execute phase-based tasks defined in the specification sheet. Perform continuous review, code audits, and refactoring iterations to maintain clean architecture and code clarity.*
 6. **Final Validation**
    *Rigorously test the logical accuracy, mathematical calculation, solver convergence, and business alignment of all challenge deliverables.*
 
