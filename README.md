@@ -16,7 +16,7 @@ This repository provides an open-source, production-grade, sector-coupled energy
 ## 2. Modeling Approach & Extent of Abstraction
 
 ### Why This Approach?
-This solution is grounded in a personal background expertise in **Mixed-Integer Linear Programming (MILP) and Linear Programming (LP) energy optimization** paired with a passion for **software framework architecture and system design**. 
+This solution is grounded in my personal background expertise in **Mixed-Integer Linear Programming (MILP) and Linear Programming (LP) energy optimization** paired with a passion for **software framework architecture and system design**. 
 
 ### Why This Level of Abstraction?
 - **Modular OOP Architecture:** An Object-Oriented Programming (OOP) design pattern was adopted for the energy system components (`src/components/`). This decouples component physics, financial logic, and PyPSA graph construction from the core solver loop, ensuring the framework is modular and extensible for simulating diverse industrial case studies or energy assets.
